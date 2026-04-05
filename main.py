@@ -155,13 +155,14 @@ async def analyze(
         }
 
         # Rasyoları serialize et
-        analizler = analiz_et(sonuc, sektor=sektor)
-        analiz_dict = {a.rasyo_id: a for a in analizler}
         rasyolar = []
         for r in sonuc.rasyolar:
             rasyo_id = getattr(r, 'id', r.ad.lower().replace(' ', '_'))
-            analiz = analiz_dict.get(rasyo_id)
-            aciklama = analiz.aciklama if analiz else r.aciklama
+            try:
+                analiz = analiz_et(rasyo_id=rasyo_id, deger=r.deger, sektor=sektor, ad=r.ad)
+                aciklama = analiz.aciklama
+            except Exception:
+                aciklama = r.aciklama
             rasyolar.append(RasyoResponse(
                 id=rasyo_id,
                 ad=r.ad,
