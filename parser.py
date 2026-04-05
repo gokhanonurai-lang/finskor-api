@@ -314,67 +314,92 @@ def _normalize_code(raw: str | int | float | None) -> str | None:
     return s if s else None
 
 
-def _find_columns(ws) -> tuple[int | None, int | None]:
+def _find_columns(ws) -> tuple[int | None, int | None, int | None]:
     """
-    Hesap kodu ve bakiye kolonunu otomatik tespit eder.
-    İlk 20 satıra bakarak sezgisel karar verir.
+    Hesap kodu, borç ve alacak kolonlarını otomatik tespit eder.
+    Üç değer döner: (code_col, borc_col, alacak_col)
+    Tek bakiye kolonlu formatlarda alacak_col=None döner.
     """
     max_col = min(ws.max_column, 20)
     code_col = None
+    borc_col = None
+    alacak_col = None
     balance_col = None
 
     for row in ws.iter_rows(min_row=1, max_row=20, max_col=max_col):
         for cell in row:
             val = str(cell.value or "").strip().lower()
-            # Hesap kodu kolonu: "hesap kodu", "kod", "no" içeren başlık
             if any(kw in val for kw in ["hesap kodu", "kod", "hs. kd", "hs.kd", "account"]):
                 code_col = cell.column
-            # Bakiye kolonu: "borç", "alacak", "bakiye", "tutar", "net" içeren başlık
-            if any(kw in val for kw in ["bakiye", "net bakiye", "tutar", "net tutar", "balance"]):
-                balance_col = cell.column
+            # Borç kolonu
+            if any(kw in val for kw in ["borç bakiye", "borç tutar", "borc bakiye", "debit"]):
+                borc_col = cell.column
+            # Alacak kolonu
+            if any(kw in val for kw in ["alacak bakiye", "alacak tutar", "credit"]):
+                alacak_col = cell.column
+            # Tek bakiye kolonu
+            if any(kw in val for kw in ["net bakiye", "net tutar", "bakiye", "tutar", "balance"]):
+                if "borç" not in val and "alacak" not in val and "borc" not in val:
+                    balance_col = cell.column
 
-    # Başlık bulunamadıysa ilk iki numerik kolonu dene
     if code_col is None:
         code_col = 1
-    if balance_col is None:
-        # Son numeric kolonu bul
-        for row in ws.iter_rows(min_row=2, max_row=10, max_col=max_col):
-            for cell in reversed(row):
-                if isinstance(cell.value, (int, float)):
-                    balance_col = cell.column
-                    break
-            if balance_col:
-                break
 
-    return code_col, balance_col
+    # Borç/alacak çift kolon varsa öncelik onlarda
+    if borc_col and alacak_col:
+        return code_col, borc_col, alacak_col
+
+    # Tek bakiye kolonu
+    if balance_col:
+        return code_col, balance_col, None
+
+    # Fallback: son numeric kolon
+    for row in ws.iter_rows(min_row=2, max_row=10, max_col=max_col):
+        for cell in reversed(row):
+            if isinstance(cell.value, (int, float)):
+                balance_col = cell.column
+                break
+        if balance_col:
+            break
+
+    return code_col, balance_col, None
 
 
 def _read_excel(filepath: str | Path) -> list[tuple[str, float]]:
     """
     Excel dosyasını okur, (hesap_kodu, bakiye) tuple listesi döner.
-    Birden fazla sheet varsa en çok satır içereni seçer.
+    Borç/Alacak çift kolon formatını da destekler.
+    Net bakiye = Borç - Alacak (aktif için pozitif, pasif için negatif)
     """
     wb = openpyxl.load_workbook(filepath, data_only=True)
-
-    # En büyük sheet'i seç
     best_ws = max(wb.worksheets, key=lambda ws: ws.max_row)
 
-    code_col, balance_col = _find_columns(best_ws)
-    if not code_col or not balance_col:
+    code_col, borc_col, alacak_col = _find_columns(best_ws)
+    if not code_col or not borc_col:
         raise ValueError("Hesap kodu veya bakiye kolonu tespit edilemedi.")
 
     rows = []
     for row in best_ws.iter_rows(min_row=2):
         raw_code = row[code_col - 1].value
-        raw_balance = row[balance_col - 1].value
-
         code = _normalize_code(raw_code)
         if not code:
             continue
+
         try:
-            balance = float(raw_balance or 0)
+            borc = float(row[borc_col - 1].value or 0)
         except (TypeError, ValueError):
-            continue
+            borc = 0.0
+
+        if alacak_col:
+            try:
+                alacak = float(row[alacak_col - 1].value or 0)
+            except (TypeError, ValueError):
+                alacak = 0.0
+            # Net bakiye mutlak değer — yön kural tablosundan geliyor
+            balance = borc if borc > 0 else alacak
+        else:
+            balance = borc
+
         if balance == 0:
             continue
         rows.append((code, balance))
