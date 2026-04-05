@@ -1,5 +1,5 @@
 """
-BilankoIQ — FastAPI Backend
+FinSkor — FastAPI Backend v2
 Çalıştır: uvicorn main:app --reload --port 8000
 """
 
@@ -11,132 +11,58 @@ from pathlib import Path
 
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
 
 from parser import parse_mizan
-from analyzer import analiz_et
-from scorer import skorla, SkorSonuc
+from scorer import skorla
+from analyzer import analiz_et, tum_analizler
+from reporter import rapor_olustur
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="BilankoIQ API", version="1.0.0")
+app = FastAPI(title="FinSkor API", version="2.0.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],   # Production'da Next.js URL'ini yaz
+    allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 
-# ─────────────────────────────────────────────
-# RESPONSE MODELLERİ
-# ─────────────────────────────────────────────
-
-class RasyoResponse(BaseModel):
-    id: str
-    ad: str
-    formul: str
-    deger: float
-    deger_fmt: str
-    bant: str
-    puan: float
-    max_puan: float
-    aciklama: str
-    kategori: str
-
-class BayrakResponse(BaseModel):
-    kod: str
-    mesaj: str
-    ciddiyet: str
-
-class AksiyanResponse(BaseModel):
-    id: str
-    baslik: str
-    etki: str
-    zorluk: str
-
-class AnalysisResponse(BaseModel):
-    # Firma özeti
-    firma_ozet: dict
-
-    # Skor
-    skor: int
-    harf: str
-    kredi_band: str
-    kredi_limit_aciklama: str
-    teminat_aciklama: str
-
-    # Kategori puanları
-    likidite_puan: float
-    sermaye_puan: float
-    karlilik_puan: float
-    faaliyet_puan: float
-    borc_puan: float
-
-    # Detay
-    rasyolar: list[RasyoResponse]
-    kirmizi_bayraklar: list[BayrakResponse]
-    aksiyon_listesi: list[AksiyanResponse]
-
-    # Tüm rasyolar (eğitim paneli)
-    tum_rasyolar: dict
-
-    # Parse meta
-    parse_method: str
-    match_rate: float
-    warnings: list[str]
-
-
-# ─────────────────────────────────────────────
-# ENDPOINTler
-# ─────────────────────────────────────────────
-
 @app.get("/health")
 def health():
-    return {"status": "ok", "service": "BilankoIQ API"}
+    return {"status": "ok", "service": "FinSkor API v2"}
 
 
-@app.post("/analyze", response_model=AnalysisResponse)
+@app.post("/analyze")
 async def analyze(
     file: UploadFile = File(...),
     sektor: str = Form(default="ticaret"),
     sirket_adi: str = Form(default=""),
 ):
-    """
-    Ana endpoint. Excel mizan yükle, tam analiz al.
-
-    Form fields:
-        file    : Excel mizan dosyası (.xlsx)
-        sektor  : ticaret | uretim | hizmet
-        sirket_adi: Firma adı (opsiyonel)
-    """
-    # Sektör doğrula
     if sektor not in ("ticaret", "uretim", "hizmet"):
         raise HTTPException(400, "sektor 'ticaret', 'uretim' veya 'hizmet' olmalı")
-
-    # Dosya uzantısı kontrol
     if not file.filename.endswith((".xlsx", ".xls")):
         raise HTTPException(400, "Sadece .xlsx veya .xls dosyaları kabul edilir")
 
-    # Geçici dosyaya kaydet
     with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as tmp:
         content = await file.read()
         tmp.write(content)
         tmp_path = tmp.name
 
     try:
-        # Parse
+        firma_adi = sirket_adi or file.filename.replace(".xlsx", "").replace(".xls", "")
+
         use_ai = bool(os.getenv("ANTHROPIC_API_KEY"))
         bs = parse_mizan(tmp_path, sector=sektor, use_ai_fallback=use_ai)
-
-        # Skorla
-        sonuc: SkorSonuc = skorla(bs, sektor=sektor)
+        sonuc = skorla(bs, sektor=sektor)
+        analizler = tum_analizler(sonuc.tum_rasyolar, sektor=sektor)
+        rapor = rapor_olustur(bs, sonuc, analizler, sektor=sektor, firma_adi=firma_adi)
 
         # Firma özeti
         firma_ozet = {
-            "sirket_adi": sirket_adi or file.filename.replace(".xlsx", ""),
+            "sirket_adi": firma_adi,
             "sektor": sektor,
             "toplam_aktif": round(bs.toplam_aktif),
             "net_satislar": round(bs.net_satislar),
@@ -150,63 +76,122 @@ async def analyze(
             "nakit": round(bs.nakit_ve_benzerleri),
             "stoklar": round(bs.stoklar),
             "ticari_alacaklar": round(bs.ticari_alacaklar),
-            "ortaklara_borclar": round(bs.ortaklara_borclar),
-            "finansman_giderleri": round(bs.finansman_giderleri),
         }
 
-        # Rasyoları serialize et
+        # Rasyolar
+        analiz_dict = {a.rasyo_id: a for a in analizler}
         rasyolar = []
         for r in sonuc.rasyolar:
-            rasyo_id = getattr(r, 'id', r.ad.lower().replace(' ', '_'))
-            try:
-                analiz = analiz_et(rasyo_id=rasyo_id, deger=r.deger, sektor=sektor, ad=r.ad)
-                aciklama = getattr(analiz, "ne_anlama_gelir", analiz.aciklama)
-            except Exception:
-                aciklama = r.aciklama
-            rasyolar.append(RasyoResponse(
-                id=rasyo_id,
-                ad=r.ad,
-                formul=r.formul,
-                deger=round(r.deger, 4),
-                deger_fmt=r.deger_fmt,
-                bant=r.bant,
-                puan=r.puan,
-                max_puan=r.max_puan,
-                aciklama=aciklama,
-                kategori=r.kategori,
-            ))
+            rasyo_id = getattr(r, "id", r.ad.lower().replace(" ", "_"))
+            analiz = analiz_dict.get(rasyo_id)
+            rasyolar.append({
+                "id": rasyo_id,
+                "ad": r.ad,
+                "formul": r.formul,
+                "deger": round(r.deger, 4),
+                "deger_fmt": r.deger_fmt,
+                "bant": r.bant,
+                "puan": r.puan,
+                "max_puan": r.max_puan,
+                "aciklama": analiz.ne_anlama_gelir if analiz else r.aciklama,
+                "iyilestirme_adimlari": analiz.nasil_iyilestirilir if analiz else [],
+                "sektor_ort": analiz.sektor_ort_fmt if analiz else "",
+                "kategori": r.kategori,
+            })
 
-        return AnalysisResponse(
-            firma_ozet=firma_ozet,
-            skor=sonuc.skor,
-            harf=sonuc.harf,
-            kredi_band=sonuc.kredi_band,
-            kredi_limit_aciklama=sonuc.kredi_limit_aciklama,
-            teminat_aciklama=sonuc.teminat_aciklama,
-            likidite_puan=sonuc.likidite_puan,
-            sermaye_puan=sonuc.sermaye_puan,
-            karlilik_puan=sonuc.karlilik_puan,
-            faaliyet_puan=sonuc.faaliyet_puan,
-            borc_puan=sonuc.borc_puan,
-            rasyolar=rasyolar,
-            kirmizi_bayraklar=[
-                BayrakResponse(kod=b.kod, mesaj=b.mesaj, ciddiyet=b.ciddiyet)
+        # Senaryolar
+        senaryolar = [{
+            "aciklama": s.aciklama,
+            "yeni_skor": s.yeni_skor,
+            "skor_delta": s.skor_delta,
+            "yeni_harf": s.yeni_harf,
+            "yeni_limit_aciklama": s.yeni_limit_aciklama,
+        } for s in rapor.senaryolar]
+
+        # Banka soruları
+        banka_sorulari = [{
+            "kategori": b.kategori,
+            "soru": b.soru,
+            "bankacinin_amaci": b.bankacinin_amaci,
+            "hazir_cevap": b.hazir_cevap,
+            "skor_etkisi": b.skor_etkisi,
+            "oncelik": b.oncelik,
+        } for b in rapor.banka_sorulari]
+
+        # Kredi türü
+        kt = rapor.kredi_turu_oneri
+        kredi_turu = {
+            "birincil_tur": kt.birincil_tur,
+            "birincil_aciklama": kt.birincil_aciklama,
+            "birincil_miktar": kt.birincil_miktar,
+            "neden": kt.neden,
+            "alternatif_turler": kt.alternatif_turler,
+        } if kt else None
+
+        # Nakit akış
+        na = rapor.nakit_akis_analiz
+        nakit_akis = {
+            "aylik_favok_fmt": na.aylik_favok_fmt,
+            "mevcut_borc_servisi_fmt": na.mevcut_borc_servisi_fmt,
+            "favok_kullanim_orani": round(na.favok_kullanim_orani * 100, 1),
+            "yeni_kredi_taksiti_fmt": na.yeni_kredi_taksiti_fmt,
+            "toplam_borc_servisi_fmt": na.toplam_borc_servisi_fmt,
+            "toplam_favok_kullanim_orani": round(na.toplam_favok_kullanim_orani * 100, 1),
+            "kapasite_degerlendirmesi": na.kapasite_degerlendirmesi,
+            "yorum": na.yorum,
+        } if na else None
+
+        # Zaman çizelgesi
+        zaman_cizelgesi = [{
+            "donem": z["donem"],
+            "aksiyonlar": z["aksiyonlar"],
+            "beklenen_etki": z["beklenen_etki"],
+        } for z in rapor.zaman_cizelgesi]
+
+        # Zayıf yönler
+        zayif_yonler = []
+        for z in rapor.zayif_yonler:
+            if isinstance(z, dict):
+                zayif_yonler.append({
+                    "mesaj": z.get("mesaj", ""),
+                    "seviye": z.get("seviye", ""),
+                    "iyilestir": z.get("iyilestir", []),
+                })
+            else:
+                zayif_yonler.append({"mesaj": str(z), "seviye": "", "iyilestir": []})
+
+        return {
+            "firma_ozet": firma_ozet,
+            "skor": sonuc.skor,
+            "harf": sonuc.harf,
+            "kredi_band": sonuc.kredi_band,
+            "kredi_limit_aciklama": sonuc.kredi_limit_aciklama,
+            "teminat_aciklama": sonuc.teminat_aciklama,
+            "likidite_puan": sonuc.likidite_puan,
+            "sermaye_puan": sonuc.sermaye_puan,
+            "karlilik_puan": sonuc.karlilik_puan,
+            "faaliyet_puan": sonuc.faaliyet_puan,
+            "borc_puan": sonuc.borc_puan,
+            "rasyolar": rasyolar,
+            "kirmizi_bayraklar": [
+                {"kod": b.kod, "mesaj": b.mesaj, "ciddiyet": b.ciddiyet}
                 for b in sonuc.kirmizi_bayraklar
             ],
-            aksiyon_listesi=[
-                AksiyanResponse(
-                    id=a["id"],
-                    baslik=a["baslik"],
-                    etki=a["etki"],
-                    zorluk=a["zorluk"],
-                )
-                for a in sonuc.aksiyon_listesi
-            ],
-            tum_rasyolar={k: round(v, 4) for k, v in sonuc.tum_rasyolar.items()},
-            parse_method=bs.parse_method,
-            match_rate=round(bs.match_rate, 3),
-            warnings=bs.warnings,
-        )
+            "guclu_yonler": list(rapor.guclu_yonler),
+            "zayif_yonler": zayif_yonler,
+            "senaryolar": senaryolar,
+            "banka_sorulari": banka_sorulari,
+            "kredi_turu": kredi_turu,
+            "nakit_akis": nakit_akis,
+            "zaman_cizelgesi": zaman_cizelgesi,
+            "banka_hazirlik": {
+                "belgeler": list(rapor.banka_hazirlik.hazirlanacak_belgeler),
+                "dikkat_edilecekler": list(rapor.banka_hazirlik.dikkat_edilecekler),
+            },
+            "parse_method": bs.parse_method,
+            "match_rate": round(bs.match_rate, 3),
+            "warnings": bs.warnings,
+        }
 
     except ValueError as e:
         raise HTTPException(422, str(e))
