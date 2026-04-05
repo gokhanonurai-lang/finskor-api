@@ -157,7 +157,18 @@ async def analyze(
         # Rasyoları serialize et
         rasyolar = []
         for r in sonuc.rasyolar:
-            rasyo_id = getattr(r, 'id', r.ad.lower().replace(' ', '_'))
+            rasyo_map = {
+                "Nakit oranı": "nakit_oran", "Cari oran": "cari_oran", "Asit-test oranı": "asit_test",
+                "Borç / Özkaynak": "borc_ozkaynak", "Finansal kaldıraç": "finansal_kaldırac",
+                "KV Borç / Toplam Borç": "kv_borc_orani", "Ortaklar cari / Toplam pasif": "ortaklar_cari_orani",
+                "Brüt kâr marjı": "brut_kar_marji", "FAVÖK marjı": "favok_marji",
+                "Faaliyet gideri oranı": "faaliyet_gider_orani", "Net kâr marjı": "net_kar_marji",
+                "ROE — Özkaynak kârlılığı": "roe", "ROA — Varlık kârlılığı": "roa",
+                "Stok devir hızı": "stok_devir", "Alacak tahsil süresi": "alacak_tahsil_suresi",
+                "Nakit dönüşüm süresi": "nakit_donusum_suresi", "Faiz karşılama oranı": "faiz_karsilama",
+                "Net Borç / FAVÖK": "net_borc_favok", "Finansman gideri / Net satış": "finansman_gider_orani",
+            }
+            rasyo_id = rasyo_map.get(r.ad, getattr(r, 'id', r.ad.lower().replace(' ', '_')))
             try:
                 analiz = analiz_et(rasyo_id=rasyo_id, deger=r.deger, sektor=sektor, ad=r.ad)
                 aciklama = getattr(analiz, "ne_anlama_gelir", analiz.aciklama)
