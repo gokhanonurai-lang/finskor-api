@@ -15,6 +15,7 @@ from pydantic import BaseModel
 
 from parser import parse_mizan
 from scorer import skorla, SkorSonuc
+from analyzer import analiz_et
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
@@ -154,10 +155,15 @@ async def analyze(
         }
 
         # Rasyoları serialize et
+        analizler = analiz_et(sonuc, sektor=sektor)
+        analiz_dict = {a.rasyo_id: a for a in analizler}
         rasyolar = []
         for r in sonuc.rasyolar:
+            rasyo_id = getattr(r, "id", r.ad.lower().replace(" ", "_"))
+            analiz = analiz_dict.get(rasyo_id)
+            aciklama = analiz.aciklama if analiz else r.aciklama
             rasyolar.append(RasyoResponse(
-                id=getattr(r, "id", r.ad.lower().replace(" ", "_")),
+                id=rasyo_id,
                 ad=r.ad,
                 formul=r.formul,
                 deger=round(r.deger, 4),
@@ -165,7 +171,7 @@ async def analyze(
                 bant=r.bant,
                 puan=r.puan,
                 max_puan=r.max_puan,
-                aciklama=r.aciklama,
+                aciklama=aciklama,
                 kategori=r.kategori,
             ))
 
