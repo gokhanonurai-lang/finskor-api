@@ -738,15 +738,23 @@ def skorla(bs, sektor: Sektor = "ticaret") -> SkorSonuc:
         # Bant açıklaması
         m, i, z = esikler
         if t["yon"] == "yuksek_iyi":
-            aciklama = (
-                f"Mükemmel: ≥ {m}  |  İyi: ≥ {i}  |  "
-                f"Zayıf: ≥ {z}  |  Kötü: < {z}"
-            )
+            if deger >= m:
+                aciklama = f"Değer {deger_fmt} — sektör normunun üzerinde, güçlü seviye."
+            elif deger >= i:
+                aciklama = f"Değer {deger_fmt} — sektör normuna yakın, kabul edilebilir."
+            elif deger >= z:
+                aciklama = f"Değer {deger_fmt} — sektör normunun altında, iyileştirme gerekiyor."
+            else:
+                aciklama = f"Değer {deger_fmt} — kritik seviyede düşük, acil önlem gerekiyor."
         else:
-            aciklama = (
-                f"Mükemmel: ≤ {m}  |  İyi: ≤ {i}  |  "
-                f"Zayıf: ≤ {z}  |  Kötü: > {z}"
-            )
+            if deger <= m:
+                aciklama = f"Değer {deger_fmt} — sektör normunun altında, güçlü seviye."
+            elif deger <= i:
+                aciklama = f"Değer {deger_fmt} — sektör normuna yakın, kabul edilebilir."
+            elif deger <= z:
+                aciklama = f"Değer {deger_fmt} — sektör normunun üzerinde, iyileştirme gerekiyor."
+            else:
+                aciklama = f"Değer {deger_fmt} — kritik seviyede yüksek, acil önlem gerekiyor."
 
         rasyo_sonuclari.append(RasyoSonuc(
             ad=t["ad"],
