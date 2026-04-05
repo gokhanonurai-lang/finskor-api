@@ -739,22 +739,22 @@ def skorla(bs, sektor: Sektor = "ticaret") -> SkorSonuc:
         m, i, z = esikler
         if t["yon"] == "yuksek_iyi":
             if deger >= m:
-                aciklama = f"Değer {deger_fmt} — sektör normunun üzerinde, güçlü seviye."
+                aciklama = f"Değer {round(deger,2)} — sektör normunun üzerinde, güçlü seviye."
             elif deger >= i:
-                aciklama = f"Değer {deger_fmt} — sektör normuna yakın, kabul edilebilir."
+                aciklama = f"Değer {round(deger,2)} — sektör normuna yakın, kabul edilebilir."
             elif deger >= z:
-                aciklama = f"Değer {deger_fmt} — sektör normunun altında, iyileştirme gerekiyor."
+                aciklama = f"Değer {round(deger,2)} — sektör normunun altında, iyileştirme gerekiyor."
             else:
-                aciklama = f"Değer {deger_fmt} — kritik seviyede düşük, acil önlem gerekiyor."
+                aciklama = f"Değer {round(deger,2)} — kritik seviyede düşük, acil önlem gerekiyor."
         else:
             if deger <= m:
-                aciklama = f"Değer {deger_fmt} — sektör normunun altında, güçlü seviye."
+                aciklama = f"Değer {round(deger,2)} — sektör normunun altında, güçlü seviye."
             elif deger <= i:
-                aciklama = f"Değer {deger_fmt} — sektör normuna yakın, kabul edilebilir."
+                aciklama = f"Değer {round(deger,2)} — sektör normuna yakın, kabul edilebilir."
             elif deger <= z:
-                aciklama = f"Değer {deger_fmt} — sektör normunun üzerinde, iyileştirme gerekiyor."
+                aciklama = f"Değer {round(deger,2)} — sektör normunun üzerinde, iyileştirme gerekiyor."
             else:
-                aciklama = f"Değer {deger_fmt} — kritik seviyede yüksek, acil önlem gerekiyor."
+                aciklama = f"Değer {round(deger,2)} — kritik seviyede yüksek, acil önlem gerekiyor."
 
         rasyo_sonuclari.append(RasyoSonuc(
             ad=t["ad"],
