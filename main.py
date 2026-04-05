@@ -160,7 +160,7 @@ async def analyze(
             rasyo_id = getattr(r, 'id', r.ad.lower().replace(' ', '_'))
             try:
                 analiz = analiz_et(rasyo_id=rasyo_id, deger=r.deger, sektor=sektor, ad=r.ad)
-                aciklama = analiz.aciklama
+                aciklama = getattr(analiz, "ne_anlama_gelir", analiz.aciklama)
             except Exception:
                 aciklama = r.aciklama
             rasyolar.append(RasyoResponse(
