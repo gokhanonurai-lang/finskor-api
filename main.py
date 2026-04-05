@@ -14,8 +14,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from parser import parse_mizan
-from scorer import skorla, SkorSonuc
 from analyzer import analiz_et
+from scorer import skorla, SkorSonuc
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
@@ -159,7 +159,7 @@ async def analyze(
         analiz_dict = {a.rasyo_id: a for a in analizler}
         rasyolar = []
         for r in sonuc.rasyolar:
-            rasyo_id = getattr(r, "id", r.ad.lower().replace(" ", "_"))
+            rasyo_id = getattr(r, 'id', r.ad.lower().replace(' ', '_'))
             analiz = analiz_dict.get(rasyo_id)
             aciklama = analiz.aciklama if analiz else r.aciklama
             rasyolar.append(RasyoResponse(
