@@ -406,7 +406,7 @@ def _read_excel(filepath):
             balance = borc if borc > 0 else alacak
         else:
             balance = borc
-        raw_rows.append((s, balance))
+        raw_rows.append((s, borc, alacak))
 
     if not raw_rows:
         return []
@@ -416,15 +416,19 @@ def _read_excel(filepath):
 
     result = []
     skipped = 0
-    for code, balance in raw_rows:
-        if balance == 0:
+    for code, borc, alacak in raw_rows:
+        if borc == 0 and alacak == 0:
             continue
         if has_hierarchy and _is_parent_code(code, all_codes):
             skipped += 1
             continue
         root = _get_root3(code)
-        if root:
-            result.append((root, balance))
+        if not root:
+            continue
+        # Net bakiye: borç mu alacak mı fazla?
+        # Pozitif = borç bakiyesi (aktif), Negatif = alacak bakiyesi (pasif/gelir)
+        net = borc - alacak
+        result.append((root, net))
 
     print(f"{'detay' if has_hierarchy else 'duz'} mizan | ham:{len(raw_rows)} atlanan:{skipped} islenen:{len(result)}")
     return result
