@@ -52,6 +52,7 @@ async def verify_token(credentials: HTTPAuthorizationCredentials = Depends(secur
     return resp.json()
 
 @app.get("/health")
+@app.head("/health")
 def health():
     return {"status": "ok", "service": "FinSkor API v2"}
 
