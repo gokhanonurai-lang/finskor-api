@@ -9,8 +9,10 @@ import tempfile
 import logging
 from pathlib import Path
 
-from fastapi import FastAPI, File, UploadFile, Form, HTTPException
+from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+import httpx
 
 from parser import parse_mizan
 from scorer import skorla
@@ -30,6 +32,25 @@ app.add_middleware(
 )
 
 
+security = HTTPBearer()
+
+SUPABASE_URL = os.getenv("SUPABASE_URL", "https://ymjwtntlfioexudvacsj.supabase.co")
+SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY", "")
+
+async def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    token = credentials.credentials
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(
+            f"{SUPABASE_URL}/auth/v1/user",
+            headers={
+                "Authorization": f"Bearer {token}",
+                "apikey": SUPABASE_ANON_KEY,
+            }
+        )
+    if resp.status_code != 200:
+        raise HTTPException(status_code=401, detail="Geçersiz veya süresi dolmuş oturum.")
+    return resp.json()
+
 @app.get("/health")
 def health():
     return {"status": "ok", "service": "FinSkor API v2"}
@@ -37,6 +58,7 @@ def health():
 
 @app.post("/analyze")
 async def analyze(
+    user = Depends(verify_token),
     file: UploadFile = File(...),
     sektor: str = Form(default="ticaret"),
     sirket_adi: str = Form(default=""),
