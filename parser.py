@@ -398,14 +398,12 @@ def _read_excel(filepath):
             borc = float(row[borc_col - 1].value or 0)
         except (TypeError, ValueError):
             borc = 0.0
+        alacak = 0.0
         if alacak_col:
             try:
                 alacak = float(row[alacak_col - 1].value or 0)
             except (TypeError, ValueError):
                 alacak = 0.0
-            balance = borc if borc > 0 else alacak
-        else:
-            balance = borc
         raw_rows.append((s, borc, alacak))
 
     if not raw_rows:
