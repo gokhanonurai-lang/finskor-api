@@ -423,10 +423,14 @@ def _read_excel(filepath):
         root = _get_root3(code)
         if not root:
             continue
-        # Net bakiye: borç mu alacak mı fazla?
-        # Pozitif = borç bakiyesi (aktif), Negatif = alacak bakiyesi (pasif/gelir)
-        net = borc - alacak
-        result.append((root, net))
+        # Her zaman pozitif bakiye döndür
+        # Hangi taraf dominant ise o tarafın net bakiyesini al
+        if borc >= alacak:
+            balance = borc - alacak  # borç bakiyesi (aktif hesaplar)
+        else:
+            balance = alacak - borc  # alacak bakiyesi (pasif/gelir hesaplar)
+        if balance > 0:
+            result.append((root, balance))
 
     print(f"{'detay' if has_hierarchy else 'duz'} mizan | ham:{len(raw_rows)} atlanan:{skipped} islenen:{len(result)}")
     return result
