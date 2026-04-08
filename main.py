@@ -67,6 +67,10 @@ async def analyze(
         raise HTTPException(400, "sektor 'ticaret', 'uretim' veya 'hizmet' olmalı")
     if not file.filename.endswith((".xlsx", ".xls")):
         raise HTTPException(400, "Sadece .xlsx veya .xls dosyaları kabul edilir")
+    content_check = await file.read()
+    if len(content_check) > 10 * 1024 * 1024:
+        raise HTTPException(400, "Dosya boyutu 10MB'ı geçemez.")
+    await file.seek(0)
 
     with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as tmp:
         content = await file.read()
