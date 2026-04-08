@@ -365,47 +365,69 @@ def _find_columns(ws) -> tuple[int | None, int | None, int | None]:
     return code_col, balance_col, None
 
 
-def _read_excel(filepath: str | Path) -> list[tuple[str, float]]:
-    """
-    Excel dosyasını okur, (hesap_kodu, bakiye) tuple listesi döner.
-    Borç/Alacak çift kolon formatını da destekler.
-    Net bakiye = Borç - Alacak (aktif için pozitif, pasif için negatif)
-    """
+def _is_parent_code(code, all_codes):
+    prefix = code + "."
+    for other in all_codes:
+        if other != code and other.startswith(prefix):
+            return True
+    return False
+
+
+def _get_root3(code):
+    return code.split(".")[0][:3]
+
+
+def _read_excel(filepath):
     wb = openpyxl.load_workbook(filepath, data_only=True)
     best_ws = max(wb.worksheets, key=lambda ws: ws.max_row)
-
     code_col, borc_col, alacak_col = _find_columns(best_ws)
     if not code_col or not borc_col:
         raise ValueError("Hesap kodu veya bakiye kolonu tespit edilemedi.")
 
-    rows = []
+    raw_rows = []
     for row in best_ws.iter_rows(min_row=2):
         raw_code = row[code_col - 1].value
-        code = _normalize_code(raw_code)
-        if not code:
+        if raw_code is None:
             continue
-
+        s = str(raw_code).strip()
+        s = re.sub(r"[^0-9.]", ".", s)
+        s = re.sub(r"[.]+", ".", s).strip(".")
+        if not s:
+            continue
         try:
             borc = float(row[borc_col - 1].value or 0)
         except (TypeError, ValueError):
             borc = 0.0
-
         if alacak_col:
             try:
                 alacak = float(row[alacak_col - 1].value or 0)
             except (TypeError, ValueError):
                 alacak = 0.0
-            # Net bakiye mutlak değer — yön kural tablosundan geliyor
             balance = borc if borc > 0 else alacak
         else:
             balance = borc
+        raw_rows.append((s, balance))
 
+    if not raw_rows:
+        return []
+
+    all_codes = set(r[0] for r in raw_rows)
+    has_hierarchy = any("." in code for code in all_codes)
+
+    result = []
+    skipped = 0
+    for code, balance in raw_rows:
         if balance == 0:
             continue
-        rows.append((code, balance))
+        if has_hierarchy and _is_parent_code(code, all_codes):
+            skipped += 1
+            continue
+        root = _get_root3(code)
+        if root:
+            result.append((root, balance))
 
-    return rows
-
+    print(f"{'detay' if has_hierarchy else 'duz'} mizan | ham:{len(raw_rows)} atlanan:{skipped} islenen:{len(result)}")
+    return result
 
 # ─────────────────────────────────────────────
 # 4. KURAL TABANLI EŞLEŞTİRME
