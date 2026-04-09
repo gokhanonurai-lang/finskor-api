@@ -384,6 +384,20 @@ def _read_excel(filepath):
     if not code_col or not borc_col:
         raise ValueError("Hesap kodu veya bakiye kolonu tespit edilemedi.")
 
+    borc_bak_col = None
+    alacak_bak_col = None
+    for row in best_ws.iter_rows(min_row=1, max_row=15, max_col=min(best_ws.max_column, 20)):
+        for cell in row:
+            val = str(cell.value or "").strip().lower()
+            # Türkçe karakter varyantlarını da kontrol et
+            val_norm = val.replace("ç", "c").replace("ö", "o").replace("ü", "u").replace("ı", "i").replace("ğ", "g").replace("ş", "s")
+            if any(kw in val_norm for kw in ["borc bakiye", "borc bak", "debit bal"]):
+                borc_bak_col = cell.column
+            if any(kw in val_norm for kw in ["alacak bakiye", "alacak bak", "credit bal"]):
+                alacak_bak_col = cell.column
+
+    logger.info(f"Bakiye sutunlari: borc_bak={borc_bak_col}, alacak_bak={alacak_bak_col}")
+
     raw_rows = []
     for row in best_ws.iter_rows(min_row=2):
         raw_code = row[code_col - 1].value
@@ -394,16 +408,35 @@ def _read_excel(filepath):
         s = re.sub(r"[.]+", ".", s).strip(".")
         if not s:
             continue
-        try:
-            borc = float(row[borc_col - 1].value or 0)
-        except (TypeError, ValueError):
-            borc = 0.0
-        alacak = 0.0
-        if alacak_col:
+
+        bak_b = 0.0
+        bak_a = 0.0
+        if borc_bak_col:
             try:
-                alacak = float(row[alacak_col - 1].value or 0)
+                bak_b = float(row[borc_bak_col - 1].value or 0)
             except (TypeError, ValueError):
-                alacak = 0.0
+                bak_b = 0.0
+        if alacak_bak_col:
+            try:
+                bak_a = float(row[alacak_bak_col - 1].value or 0)
+            except (TypeError, ValueError):
+                bak_a = 0.0
+
+        if bak_b > 0 or bak_a > 0:
+            borc = bak_b
+            alacak = bak_a
+        else:
+            try:
+                borc = float(row[borc_col - 1].value or 0)
+            except (TypeError, ValueError):
+                borc = 0.0
+            alacak = 0.0
+            if alacak_col:
+                try:
+                    alacak = float(row[alacak_col - 1].value or 0)
+                except (TypeError, ValueError):
+                    alacak = 0.0
+
         raw_rows.append((s, borc, alacak))
 
     if not raw_rows:
@@ -423,31 +456,14 @@ def _read_excel(filepath):
         root = _get_root3(code)
         if not root:
             continue
-        # Bakiye hesapla
-        # Eğer bakiye sütunları bulunduysa (E=borc bakiye, F=alacak bakiye):
-        # borc sütunu = borç bakiyesi, alacak sütunu = alacak bakiyesi
-        # Hangisi sıfırdan büyükse onu al — ikisi aynı anda dolu olmaz
-        # Eğer hareket sütunları bulunduysa (C=borc tutarı, D=alacak tutarı):
-        # net = borc - alacak
-        if alacak_col is not None:
-            # Her iki sütun da var - bakiye mi hareket mi olduğunu anla
-            # Bakiye sütunlarında biri 0, diğeri dolu olur
-            # Hareket sütunlarında ikisi de dolu olabilir
-            if borc > 0 and alacak > 0:
-                # Her ikisi de dolu = hareket sütunları, net al
-                balance = borc - alacak if borc > alacak else alacak - borc
-            elif borc > 0:
-                balance = borc
-            elif alacak > 0:
-                balance = alacak
-            else:
-                continue
-        else:
-            balance = borc if borc > 0 else 0
+        balance = borc if borc >= alacak else alacak
         if balance > 0:
             result.append((root, balance))
 
-    print(f"{'detay' if has_hierarchy else 'duz'} mizan | ham:{len(raw_rows)} atlanan:{skipped} islenen:{len(result)}")
+    logger.info(
+        f"{'detay' if has_hierarchy else 'duz'} mizan | "
+        f"ham:{len(raw_rows)} atlanan:{skipped} islenen:{len(result)}"
+    )
     return result
 
 # ─────────────────────────────────────────────
