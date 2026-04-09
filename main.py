@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 # ─── KALİTE KONTROL ───────────────────────────────────────────────────────────
 
-async def kalite_kontrol(rapor, bs) -> tuple[bool, str]:
+async def kalite_kontrol(sonuc, bs) -> tuple[bool, str]:
     """Raporu Claude Haiku ile kalite kontrolünden geçirir."""
     import anthropic
 
@@ -43,7 +43,8 @@ VERİLER:
 - FAVÖK: {bs.favok:,.0f} TL
 - Net Kâr: {bs.net_kar:,.0f} TL
 - Özkaynaklar: {bs.ozkaynaklar:,.0f} TL
-- Skor: {rapor.yonetici_ozeti.toplam_skor}/100
+- Skor: {sonuc.skor}/100
+- Bant: {sonuc.harf}
 
 KONTROL ET:
 1. Net satışlar sıfır veya negatif mi?
@@ -138,7 +139,7 @@ async def analyze(
         rapor = rapor_olustur(bs, sonuc, analizler, sektor=sektor, firma_adi=firma_adi)
 
         # Kalite kontrolü
-        gecti, hata_mesaji = await kalite_kontrol(rapor, bs)
+        gecti, hata_mesaji = await kalite_kontrol(sonuc, bs)
         if not gecti:
             raise HTTPException(
                 status_code=422,
