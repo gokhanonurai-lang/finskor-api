@@ -423,12 +423,27 @@ def _read_excel(filepath):
         root = _get_root3(code)
         if not root:
             continue
-        # Her zaman pozitif bakiye döndür
-        # Hangi taraf dominant ise o tarafın net bakiyesini al
-        if borc >= alacak:
-            balance = borc - alacak  # borç bakiyesi (aktif hesaplar)
+        # Bakiye hesapla
+        # Eğer bakiye sütunları bulunduysa (E=borc bakiye, F=alacak bakiye):
+        # borc sütunu = borç bakiyesi, alacak sütunu = alacak bakiyesi
+        # Hangisi sıfırdan büyükse onu al — ikisi aynı anda dolu olmaz
+        # Eğer hareket sütunları bulunduysa (C=borc tutarı, D=alacak tutarı):
+        # net = borc - alacak
+        if alacak_col is not None:
+            # Her iki sütun da var - bakiye mi hareket mi olduğunu anla
+            # Bakiye sütunlarında biri 0, diğeri dolu olur
+            # Hareket sütunlarında ikisi de dolu olabilir
+            if borc > 0 and alacak > 0:
+                # Her ikisi de dolu = hareket sütunları, net al
+                balance = borc - alacak if borc > alacak else alacak - borc
+            elif borc > 0:
+                balance = borc
+            elif alacak > 0:
+                balance = alacak
+            else:
+                continue
         else:
-            balance = alacak - borc  # alacak bakiyesi (pasif/gelir hesaplar)
+            balance = borc if borc > 0 else 0
         if balance > 0:
             result.append((root, balance))
 
