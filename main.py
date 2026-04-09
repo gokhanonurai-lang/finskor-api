@@ -22,6 +22,56 @@ from reporter import rapor_olustur
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
 
+# ─── KALİTE KONTROL ───────────────────────────────────────────────────────────
+
+async def kalite_kontrol(rapor, bs) -> tuple[bool, str]:
+    """Raporu Claude Haiku ile kalite kontrolünden geçirir."""
+    import anthropic
+
+    client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
+
+    aktif_pasif_fark = abs(bs.toplam_aktif - bs.toplam_pasif)
+    aktif_pasif_oran = (aktif_pasif_fark / bs.toplam_aktif * 100) if bs.toplam_aktif > 0 else 100
+
+    prompt = f"""Finansal rapor kalite kontrolü yap. Sadece GECER veya HATA: [açıklama] döndür.
+
+VERİLER:
+- Toplam Aktif: {bs.toplam_aktif:,.0f} TL
+- Toplam Pasif: {bs.toplam_pasif:,.0f} TL
+- Aktif-Pasif Fark Oranı: %{aktif_pasif_oran:.1f}
+- Net Satışlar: {bs.net_satislar:,.0f} TL
+- FAVÖK: {bs.favok:,.0f} TL
+- Net Kâr: {bs.net_kar:,.0f} TL
+- Özkaynaklar: {bs.ozkaynaklar:,.0f} TL
+- Skor: {rapor.yonetici_ozeti.toplam_skor}/100
+
+KONTROL ET:
+1. Net satışlar sıfır veya negatif mi?
+2. Toplam aktif sıfır veya çok düşük mü?
+3. Aktif-pasif farkı %15'ten fazla mı?
+4. Skor ve veriler tutarlı mı?
+
+Sadece GECER veya HATA: [kısa açıklama] yaz."""
+
+    try:
+        message = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=100,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        sonuc = message.content[0].text.strip()
+        if sonuc.startswith("GECER"):
+            return True, "OK"
+        elif sonuc.startswith("HATA:"):
+            return False, sonuc[5:].strip()
+        else:
+            return True, "OK"
+    except Exception as e:
+        logger.warning(f"Kalite kontrol hatasi: {e}")
+        return True, "OK"
+
+
+
 app = FastAPI(title="FinSkor API", version="2.0.0")
 
 app.add_middleware(
@@ -86,6 +136,14 @@ async def analyze(
         sonuc = skorla(bs, sektor=sektor)
         analizler = tum_analizler(sonuc.tum_rasyolar, sektor=sektor)
         rapor = rapor_olustur(bs, sonuc, analizler, sektor=sektor, firma_adi=firma_adi)
+
+        # Kalite kontrolü
+        gecti, hata_mesaji = await kalite_kontrol(rapor, bs)
+        if not gecti:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Mizanınızda tutarsızlık tespit edildi: {hata_mesaji}. Lütfen mizanınızı kontrol edip tekrar yükleyin."
+            )
 
         # Firma özeti
         firma_ozet = {
