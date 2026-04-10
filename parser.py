@@ -187,7 +187,9 @@ class BalanceSheet:
 ACCOUNT_MAP: list[tuple[list[str], str, int]] = [
     # NAKİT
     (["100"], "kasa", 1),
+    (["101"], "diger_hazir_degerler", 1),   # Alınan çekler
     (["102"], "banka", 1),
+    (["103"], "diger_hazir_degerler", -1),  # Verilen çekler (negatif)
     (["108"], "diger_hazir_degerler", 1),
 
     # TİCARİ ALACAKLAR (KV)
@@ -212,7 +214,7 @@ ACCOUNT_MAP: list[tuple[list[str], str, int]] = [
 
     # MADDİ DURAN VARLIKLAR (net — birikmiş amortisman düşülmüş gelir)
     (["250", "251", "252", "253", "254", "255",
-      "256", "257", "258"], "maddi_duran_varliklar", 1),
+      "256"], "maddi_duran_varliklar", 1),
     (["257", "258"], "maddi_duran_varliklar", -1),  # Birikmiş amortismanlar
 
     # MADDİ OLMAYAN DURAN VARLIKLAR
@@ -232,6 +234,7 @@ ACCOUNT_MAP: list[tuple[list[str], str, int]] = [
     (["303"], "uzun_vadeli_borclar_kv", 1),
 
     # TİCARİ BORÇLAR (KV)
+    (["310", "311"], "ticari_borclar_kv", 1),   # Satıcılar
     (["320", "321"], "ticari_borclar_kv", 1),
 
     # ORTAKLARA BORÇLAR
@@ -255,6 +258,7 @@ ACCOUNT_MAP: list[tuple[list[str], str, int]] = [
 
     # UV BANKA KREDİLERİ
     (["400", "401"], "banka_kredileri_uv", 1),
+    (["472"], "diger_uv_borclar", 1),          # Kıdem tazminatı karşılığı
     (["402", "403", "404", "405", "406", "407",
       "408", "409",
       "410", "411", "412", "413", "414", "415",
