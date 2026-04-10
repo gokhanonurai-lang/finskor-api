@@ -194,8 +194,9 @@ ACCOUNT_MAP: list[tuple[list[str], str, int]] = [
 
     # TİCARİ ALACAKLAR (KV)
     (["120", "121"], "ticari_alacaklar", 1),
-    (["122", "124", "126", "127", "128", "129",
+    (["122", "124", "126", "127", "128",
       "136", "137", "138", "139"], "diger_alacaklar_kv", 1),
+    (["129"], "diger_alacaklar_kv", -1),   # Şüpheli alacak karşılığı (negatif)
 
     # STOKLAR
     (["150", "151", "152", "153", "154", "157", "158"], "stoklar", 1),
