@@ -312,7 +312,7 @@ ACCOUNT_MAP: list[tuple[list[str], str, int]] = [
     (["600", "601", "602"], "net_satislar", 1),
     (["610", "611", "612"], "net_satislar", -1),   # Satış indirimleri
     (["620", "621", "622", "623"], "satislarin_maliyeti", 1),
-    (["630"], "pazarlama_giderleri", 1),
+    (["630", "633"], "arge_giderleri", 1),
     (["631"], "genel_yonetim_giderleri", 1),
     (["632"], "genel_yonetim_giderleri", 1),  # Genel Yonetim Giderleri
     (["640", "641", "642", "643", "644",

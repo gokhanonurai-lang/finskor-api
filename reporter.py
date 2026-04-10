@@ -223,11 +223,16 @@ def _zayif_yonler(skor_sonuc: "SkorSonuc", analizler: list["RasyoAnaliz"]) -> li
         if r.bant == "kotu":
             analiz = analiz_dict.get(getattr(r, 'id', ''))
             iyilestir = analiz.nasil_iyilestirilir[:3] if analiz and analiz.nasil_iyilestirilir else []
+            import re
+            aciklama_k = analiz.ne_anlama_gelir if analiz else ""
+            cumleler_k = re.split(r'(?<=[a-züöçşığıA-ZÜÖÇŞİĞI])\. ', aciklama_k)
+            ozet_k = cumleler_k[0].rstrip('.') + "." if cumleler_k else ""
             zayif.append({
                 "seviye": "kritik",
                 "mesaj": (
                     f"{r.ad}: {r.deger_fmt} — kritik seviyede. "
-                    f"Bu rasyo bankacılık değerlendirmesinde olumsuz etki yaratıyor."
+                    + (ozet_k + " " if ozet_k else "")
+                    + "Bu rasyo bankacılık değerlendirmesinde olumsuz etki yaratıyor."
                 ),
                 "iyilestir": iyilestir,
             })
@@ -237,11 +242,16 @@ def _zayif_yonler(skor_sonuc: "SkorSonuc", analizler: list["RasyoAnaliz"]) -> li
         if r.bant == "zayif":
             analiz = analiz_dict.get(getattr(r, 'id', ''))
             iyilestir = analiz.nasil_iyilestirilir[:3] if analiz and analiz.nasil_iyilestirilir else []
+            import re
+            aciklama_z = analiz.ne_anlama_gelir if analiz else ""
+            cumleler_z = re.split(r'(?<=[a-züöçşığıA-ZÜÖÇŞİĞI])\. ', aciklama_z)
+            ozet_z = cumleler_z[0].rstrip('.') + "." if cumleler_z else ""
             zayif.append({
                 "seviye": "uyari",
                 "mesaj": (
                     f"{r.ad}: {r.deger_fmt} — zayıf seviyede. "
-                    f"İyileştirme yapılması önerilir."
+                    + (ozet_z + " " if ozet_z else "")
+                    + "İyileştirme yapılması önerilir."
                 ),
                 "iyilestir": iyilestir,
             })
