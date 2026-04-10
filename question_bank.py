@@ -74,10 +74,13 @@ def _sorular_bilanco_kalitesi(bs, skor_sonuc) -> list[BankaSorusu]:
                 "değerinin %40-50'si kadar değer biçer."
             ),
             hazir_cevap=(
-                f"Stoklarımızın tamamı aktif satış döngüsündedir. "
-                f"Son dönemde {stok_gun:.0f} günlük dönüş hızı sektör normali "
-                f"dahilindedir. Eskimiş veya değer düşüklüğüne uğramış ürün bulunmamaktadır. "
-                f"Stok listesi talep edilmesi halinde sunulabilir."
+                "Stoklarımızın tamamı aktif satış döngüsündedir. "
+                + (f"Stok dönüş süremiz {stok_gun:.0f} gün olup sektör ortalamasının üzerindedir; "
+                   "bu durumu iyileştirmek için aktif önlemler alınmaktadır. "
+                   if stok_gun > 90 else
+                   f"Son dönemde {stok_gun:.0f} günlük dönüş hızı sektör normali dahilindedir. ")
+                + "Eskimiş veya değer düşüklüğüne uğramış ürün bulunmamaktadır. "
+                + "Stok listesi talep edilmesi halinde sunulabilir."
             ),
             skor_etkisi=(
                 f"Stok {bs.stoklar*0.3:,.0f} TL eritilirse stok devir hızı artar, "
