@@ -462,7 +462,7 @@ def _nakit_akis_analiz(bs, skor_sonuc: "SkorSonuc") -> NakitAkisAnaliz:
 
 
 
-def _senaryo_hesapla(bs, sektor: str, aciklama: str, degisiklikler: dict) -> SenaryoSonuc:
+def _senaryo_hesapla(bs, sektor: str, aciklama: str, degisiklikler: dict, baz_skor: int = 0) -> SenaryoSonuc:
     """
     Verilen bilanço değişikliklerini uygular ve yeni skoru hesaplar.
     degisiklikler: {"alan_adi": delta_TL}
@@ -487,7 +487,7 @@ def _senaryo_hesapla(bs, sektor: str, aciklama: str, degisiklikler: dict) -> Sen
         aciklama=aciklama,
         degisiklik=degisiklikler,
         yeni_skor=yeni_sonuc.skor,
-        skor_delta=yeni_sonuc.skor - 0,  # base skor dışarıdan gelecek
+        skor_delta=yeni_sonuc.skor - baz_skor,
         yeni_harf=yeni_sonuc.harf,
         yeni_limit_aciklama=yeni_sonuc.kredi_limit_aciklama,
         etkilenen_rasyolar=[],
