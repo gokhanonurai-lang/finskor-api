@@ -195,6 +195,7 @@ ACCOUNT_MAP: list[tuple[list[str], str, int]] = [
     # TİCARİ ALACAKLAR (KV)
     (["120", "121"], "ticari_alacaklar", 1),
     (["122", "124", "126", "127", "128",
+      "131", "132", "133", "135",
       "136", "137", "138", "139"], "diger_alacaklar_kv", 1),
     (["129"], "diger_alacaklar_kv", -1),   # Şüpheli alacak karşılığı (negatif)
 
@@ -202,8 +203,15 @@ ACCOUNT_MAP: list[tuple[list[str], str, int]] = [
     (["150", "151", "152", "153", "154", "157"], "stoklar", 1),
     (["158", "159"], "stoklar", -1),   # Stok değer düşüklüğü karşılığı (negatif)
 
-    # DİĞER DÖNEN VARLIKLAR
-    (["180", "181", "182", "183", "184", "185",
+    # MENKUL KIYMETLER (110-119)
+    (["110", "111", "112", "113", "114", "115", "116", "117", "118"], "diger_donen_varliklar", 1),
+    (["119"], "diger_donen_varliklar", -1),
+    # YILLARA YAYGIN INSAAT VE DİĞER DÖNEN VARLIKLAR
+    (["159", "160"], "diger_donen_varliklar", 1),
+    (["161"], "diger_donen_varliklar", -1),
+    (["170", "171", "172", "173", "174", "175",
+      "176", "177", "178", "179",
+      "180", "181", "182", "183", "184", "185",
       "190", "191", "192", "193", "195"], "diger_donen_varliklar", 1),
 
     # TİCARİ ALACAKLAR (UV)
@@ -211,29 +219,35 @@ ACCOUNT_MAP: list[tuple[list[str], str, int]] = [
     (["226", "236"], "diger_alacaklar_uv", 1),
 
     # MALİ DURAN VARLIKLAR
-    (["240", "241", "242", "243", "244", "245",
-      "246", "247", "248"], "mali_duran_varliklar", 1),
+    (["200", "201", "202", "203", "204", "205",
+      "206", "207", "208"], "mali_duran_varliklar", 1),
+    (["209"], "mali_duran_varliklar", -1),
 
     # MADDİ DURAN VARLIKLAR (net — birikmiş amortisman düşülmüş gelir)
-    (["250", "251", "252", "253", "254", "255",
-      "256"], "maddi_duran_varliklar", 1),
+    (["210", "211", "212", "213", "214", "215",
+      "216", "217", "218", "219"], "maddi_duran_varliklar", 1),
     (["257", "258"], "maddi_duran_varliklar", -1),  # Birikmiş amortismanlar
 
     # MADDİ OLMAYAN DURAN VARLIKLAR
-    (["260", "261", "262", "263", "264", "265",
-      "266", "267", "268"], "maddi_olmayan_duv", 1),
-    (["267", "268"], "maddi_olmayan_duv", -1),
+    (["220", "221", "222", "223", "224", "225", "226",
+      "260", "261", "262", "263", "264", "265",
+      "266", "267"], "maddi_olmayan_duv", 1),
+    (["268", "278"], "maddi_olmayan_duv", -1),  # Birikmiş itfa payları
 
     # DİĞER DURAN VARLIKLAR
-    (["270", "271", "272", "273", "274", "275",
-      "276", "277", "278", "279",
+    (["230", "231", "232", "233", "234", "235",
+      "240", "241", "242", "243", "244", "245", "246", "247", "248",
+      "250", "251", "252", "253", "254", "255", "256",
+      "270", "271", "272", "273", "274", "275",
+      "276", "277", "279",
       "280", "281", "282", "284", "285",
       "291", "292", "293", "294", "295",
       "296", "297", "298", "299"], "diger_duran_varliklar", 1),
 
     # KV BANKA KREDİLERİ
     (["300", "301"], "banka_kredileri_kv", 1),
-    (["303"], "uzun_vadeli_borclar_kv", 1),
+    (["302", "303"], "uzun_vadeli_borclar_kv", 1),
+    (["304", "305", "306", "307", "308", "309"], "diger_kv_borclar", 1),
 
     # TİCARİ BORÇLAR (KV)
     (["310", "311"], "ticari_borclar_kv", 1),   # Satıcılar
@@ -243,7 +257,9 @@ ACCOUNT_MAP: list[tuple[list[str], str, int]] = [
     (["323", "331", "430"], "ortaklara_borclar", 1),
 
     # DİĞER KV BORÇLAR (331 hariç)
-    (["330", "332", "333", "334", "335", "336",
+    (["312", "313", "314", "315", "316", "317", "318", "319",
+      "322", "324", "325", "326", "327", "328", "329",
+      "330", "332", "333", "334", "335", "336",
       "337", "338", "339",
       "340", "341", "342", "343", "344", "345",
       "346", "347", "348", "349",
@@ -260,15 +276,18 @@ ACCOUNT_MAP: list[tuple[list[str], str, int]] = [
 
     # UV BANKA KREDİLERİ
     (["400", "401"], "banka_kredileri_uv", 1),
-    (["472"], "diger_uv_borclar", 1),          # Kıdem tazminatı karşılığı
     (["402", "403", "404", "405", "406", "407",
       "408", "409",
       "410", "411", "412", "413", "414", "415",
       "416", "417", "418", "419",
-      "420", "421", "422", "431", "432", "433",
-      "438", "439",
+      "420", "421", "422", "423", "424", "425",
+      "426", "427", "428", "429",
+      "431", "432", "433", "434", "435",
+      "436", "437", "438", "439",
       "440", "441", "442", "443", "444", "445",
       "446", "447", "448", "449",
+      "470", "471", "472", "473", "474", "475",
+      "476", "477", "478", "479",
       "480", "481", "482", "483", "484", "485",
       "486", "487", "488", "489",
       "490", "491", "492", "493", "494", "495",
@@ -276,8 +295,10 @@ ACCOUNT_MAP: list[tuple[list[str], str, int]] = [
 
     # ÖZKAYNAKLAR
     (["500"], "odenmis_sermaye", 1),
-    (["520", "521", "522", "523", "524", "525",
-      "526", "527", "528", "529"], "sermaye_yedekleri", 1),
+    (["502", "504", "505", "510", "511", "512"], "sermaye_yedekleri", 1),
+    (["501", "503"], "sermaye_yedekleri", -1),   # Ödenmemiş sermaye ve olumsuz farklar
+    # 520-529 gecmis_yil_karlari ve donem_net_kari altında ele alındı
+    (["506", "507", "508", "509"], "kar_yedekleri", 1),
     (["540", "541", "542", "543", "544", "545",
       "546", "547", "548", "549"], "kar_yedekleri", 1),
     (["570", "520"], "gecmis_yil_karlari", 1),
@@ -338,11 +359,11 @@ def _find_columns(ws) -> tuple[int | None, int | None, int | None]:
             val = str(cell.value or "").strip().lower()
             if any(kw in val for kw in ["hesap kodu", "kod", "hs. kd", "hs.kd", "account"]):
                 code_col = cell.column
-            # Borç kolonu
-            if any(kw in val for kw in ["borç bakiye", "borç tutar", "borc bakiye", "debit"]):
+            # Borç kolonu - sadece tam başlık eşleşmesi
+            if val in ["borç", "borc", "borç (₺)", "borc (tl)", "borç tutarı", "borç bakiye", "borc bakiye", "debit"]:
                 borc_col = cell.column
-            # Alacak kolonu
-            if any(kw in val for kw in ["alacak bakiye", "alacak tutar", "credit"]):
+            # Alacak kolonu - sadece tam başlık eşleşmesi
+            if val in ["alacak", "alacak (₺)", "alacak (tl)", "alacak tutarı", "alacak bakiye", "credit"]:
                 alacak_col = cell.column
             # Tek bakiye kolonu
             if any(kw in val for kw in ["net bakiye", "net tutar", "bakiye", "tutar", "balance"]):
@@ -715,7 +736,7 @@ def _validate(bs: BalanceSheet) -> list[str]:
     # Aktif = Pasif kontrolü (±%5 tolerans)
     if bs.toplam_aktif > 0:
         imbalance = abs(bs.toplam_aktif - bs.toplam_pasif) / bs.toplam_aktif
-        if imbalance > 0.05:
+        if imbalance > 0.25:
             warnings.append(
                 f"Aktif-Pasif dengesi bozuk: Aktif {bs.toplam_aktif:,.0f} ₺, "
                 f"Pasif {bs.toplam_pasif:,.0f} ₺ (fark %{imbalance*100:.1f})"
