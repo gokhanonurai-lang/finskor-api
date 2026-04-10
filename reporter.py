@@ -413,20 +413,21 @@ def _nakit_akis_analiz(bs, skor_sonuc: "SkorSonuc") -> NakitAkisAnaliz:
         mevcut_oran = 0
         toplam_oran = 0
 
-    if toplam_oran <= 0.40:
+    kullanim_oran = mevcut_oran  # Sadece mevcut borca bak
+    if kullanim_oran <= 0.40:
         kapasite = "rahat"
         yorum = (
             f"Aylık işletme kârınızın ({aylik_favok:,.0f} TL) yalnızca "
-            f"{toplam_oran*100:.0f}%'i borç servisine gidecek. "
+            f"{mevcut_oran*100:.0f}%'i borç servisine gidecek. "
             f"Kredi geri ödemesinde rahat bir kapasiteniz var."
         )
-    elif toplam_oran <= 0.60:
+    elif kullanim_oran <= 0.60:
         kapasite = "makul"
         yorum = (
             f"Aylık işletme kârınızın {toplam_oran*100:.0f}%'i borç servisine gidecek. "
             f"Yönetilebilir bir yük ancak beklenmedik gider durumunda dikkatli olunmalı."
         )
-    elif toplam_oran <= 0.80:
+    elif kullanim_oran <= 0.80:
         kapasite = "riskli"
         yorum = (
             f"Aylık işletme kârınızın {toplam_oran*100:.0f}%'i borç servisine gidecek. "
