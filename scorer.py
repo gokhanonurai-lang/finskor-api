@@ -374,9 +374,9 @@ def _bant_bul(deger: float, esikler: tuple, yon: str) -> str:
 def _fmt_deger(deger: float, rasyo_id: str) -> str:
     """Değeri ekran formatına çevirir."""
     yuzde_rasyolar = {
-        "favok_marji", "net_kar_marji", "roe",
+        "favok_marji", "net_kar_marji", "roe", "roa",
         "ortaklar_cari_orani", "finansman_gider_orani",
-        "kv_borc_orani",
+        "kv_borc_orani", "brut_kar_marji", "faaliyet_gider_orani",
     }
     gun_rasyolar = {"alacak_tahsil_suresi", "nakit_donusum_suresi"}
     x_rasyolar = {"stok_devir", "faiz_karsilama", "net_borc_favok",
