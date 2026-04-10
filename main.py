@@ -49,7 +49,7 @@ VERİLER:
 KONTROL ET:
 1. Net satışlar sıfır veya negatif mi?
 2. Toplam aktif sıfır veya çok düşük mü?
-3. Aktif-pasif farkı %30'dan fazla mı? (Gelir tablosu kalemlerini içeren mizanlarda %20 fark normaldir)
+3. Aktif-pasif farkı %5'ten fazla mı?
 4. Skor ve veriler tutarlı mı?
 
 Sadece GECER veya HATA: [kısa açıklama] yaz."""
