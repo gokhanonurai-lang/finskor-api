@@ -144,9 +144,12 @@ class BalanceSheet:
 
     @property
     def net_kar(self) -> float:
-        if self.donem_net_kari != 0:
+        # Gelir tablosu hesaplarından hesapla
+        hesaplanan = self.favok + self.finansman_gelirleri - self.finansman_giderleri - self.vergi_gideri
+        # Gelir tablosu yoksa (net_satislar=0) 590 hesabını kullan
+        if self.net_satislar == 0 and self.donem_net_kari != 0:
             return self.donem_net_kari
-        return self.favok + self.finansman_gelirleri - self.finansman_giderleri - self.vergi_gideri
+        return hesaplanan
 
     @property
     def finansal_borclar(self) -> float:
@@ -360,11 +363,20 @@ def _find_columns(ws) -> tuple[int | None, int | None, int | None]:
             if any(kw in val for kw in ["hesap kodu", "kod", "hs. kd", "hs.kd", "account"]):
                 code_col = cell.column
             # Borç kolonu - sadece tam başlık eşleşmesi
-            if val in ["borç", "borc", "borç (₺)", "borc (tl)", "borç tutarı", "borç bakiye", "borc bakiye", "debit"]:
+            # Borç kolonu tespiti
+            if val in ["borç", "borc", "borç (₺)", "borc (tl)", "borç tutarı", "debit", "borç toplam", "borc toplam"]:
                 borc_col = cell.column
-            # Alacak kolonu - sadece tam başlık eşleşmesi
-            if val in ["alacak", "alacak (₺)", "alacak (tl)", "alacak tutarı", "alacak bakiye", "credit"]:
+            # Borç bakiye kolonu - sadece borç toplam yoksa kullan
+            if val in ["borç bakiye", "borc bakiye", "borç bak", "borc bak"]:
+                if borc_col is None:
+                    borc_col = cell.column
+            # Alacak kolonu tespiti
+            if val in ["alacak", "alacak (₺)", "alacak (tl)", "alacak tutarı", "credit", "alacak toplam"]:
                 alacak_col = cell.column
+            # Alacak bakiye kolonu - sadece alacak toplam yoksa kullan
+            if val in ["alacak bakiye", "alacak bak"]:
+                if alacak_col is None:
+                    alacak_col = cell.column
             # Tek bakiye kolonu
             if any(kw in val for kw in ["net bakiye", "net tutar", "bakiye", "tutar", "balance"]):
                 if "borç" not in val and "alacak" not in val and "borc" not in val:
