@@ -199,7 +199,8 @@ ACCOUNT_MAP: list[tuple[list[str], str, int]] = [
     (["129"], "diger_alacaklar_kv", -1),   # Şüpheli alacak karşılığı (negatif)
 
     # STOKLAR
-    (["150", "151", "152", "153", "154", "157", "158"], "stoklar", 1),
+    (["150", "151", "152", "153", "154", "157"], "stoklar", 1),
+    (["158", "159"], "stoklar", -1),   # Stok değer düşüklüğü karşılığı (negatif)
 
     # DİĞER DÖNEN VARLIKLAR
     (["180", "181", "182", "183", "184", "185",
@@ -239,7 +240,7 @@ ACCOUNT_MAP: list[tuple[list[str], str, int]] = [
     (["320", "321"], "ticari_borclar_kv", 1),
 
     # ORTAKLARA BORÇLAR
-    (["331"], "ortaklara_borclar", 1),
+    (["323", "331", "430"], "ortaklara_borclar", 1),
 
     # DİĞER KV BORÇLAR (331 hariç)
     (["330", "332", "333", "334", "335", "336",
@@ -279,13 +280,14 @@ ACCOUNT_MAP: list[tuple[list[str], str, int]] = [
       "526", "527", "528", "529"], "sermaye_yedekleri", 1),
     (["540", "541", "542", "543", "544", "545",
       "546", "547", "548", "549"], "kar_yedekleri", 1),
-    (["570"], "gecmis_yil_karlari", 1),
-    (["590"], "donem_net_kari", 1),
+    (["570", "520"], "gecmis_yil_karlari", 1),
+    (["521", "523"], "gecmis_yil_karlari", -1),   # Geçmiş yıl zararları
+    (["590", "522"], "donem_net_kari", 1),
 
     # GELİR TABLOSU
-    (["600"], "net_satislar", 1),
-    (["610"], "net_satislar", -1),          # Satış indirimleri
-    (["620", "621", "622"], "satislarin_maliyeti", 1),
+    (["600", "601", "602"], "net_satislar", 1),
+    (["610", "611", "612"], "net_satislar", -1),   # Satış indirimleri
+    (["620", "621", "622", "623"], "satislarin_maliyeti", 1),
     (["630"], "pazarlama_giderleri", 1),
     (["631"], "genel_yonetim_giderleri", 1),
     (["632"], "genel_yonetim_giderleri", 1),  # Genel Yonetim Giderleri
