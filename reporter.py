@@ -281,7 +281,7 @@ def _kredi_turu_oneri(bs, skor_sonuc: "SkorSonuc", sektor: str) -> KrediTuruOner
     )
 
     # Alacak tahsil süresine göre spot kredi önerisi
-    if alacak_gun >= 45 and bs.ticari_alacaklar > 0:
+    if 45 <= alacak_gun <= 95 and bs.ticari_alacaklar > 0:
         aylik_tahsilat = bs.net_satislar / 12 if bs.net_satislar else 0
         gun_fmt = f"{alacak_gun:.0f}"
         neden = (
