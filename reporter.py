@@ -258,89 +258,79 @@ def _kredi_turu_oneri(bs, skor_sonuc: "SkorSonuc", sektor: str) -> KrediTuruOner
     """
     Bilanço yapısından firmanın hangi kredi türüne ihtiyacı olduğunu tespit eder.
     """
-    nds       = (bs.stoklar * 365 / bs.satislarin_maliyeti if bs.satislarin_maliyeti else 0) + \
-                (bs.ticari_alacaklar * 365 / bs.net_satislar if bs.net_satislar else 0) - \
-                (bs.ticari_borclar_kv * 365 / bs.satislarin_maliyeti if bs.satislarin_maliyeti else 0)
-    cari_oran = bs.donen_varliklar / bs.kv_borclar if bs.kv_borclar else 0
-    duran_varlik_orani = bs.duran_varliklar / bs.toplam_aktif if bs.toplam_aktif else 0
+    nds           = (bs.stoklar * 365 / bs.satislarin_maliyeti if bs.satislarin_maliyeti else 0) + \
+                    (bs.ticari_alacaklar * 365 / bs.net_satislar if bs.net_satislar else 0) - \
+                    (bs.ticari_borclar_kv * 365 / bs.satislarin_maliyeti if bs.satislarin_maliyeti else 0)
+    alacak_gun    = bs.ticari_alacaklar * 365 / bs.net_satislar if bs.net_satislar else 0
+    cari_oran     = bs.donen_varliklar / bs.kv_borclar if bs.kv_borclar else 0
+    duran_oran    = bs.duran_varliklar / bs.toplam_aktif if bs.toplam_aktif else 0
+    skor          = skor_sonuc.skor
 
-    # Tespit: birincil ihtiyaç
-    if cari_oran < 1.3 or nds > 70:
-        # İşletme sermayesi sıkıntısı
-        isletme_ihtiyac = bs.kv_borclar * 0.3
-        birincil = "Rotatif (Döner) Kredi"
-        birincil_aciklama = (
-            "Cari oranınız ve nakit dönüşüm süreniz işletme sermayesi "
-            "sıkıntısına işaret ediyor. Rotatif kredi, ihtiyaç duydukça "
-            "çekip geri ödeyebildiğiniz esnek bir kredi türüdür. "
-            "Stok alımı, alacak finansmanı ve günlük işletme giderleri için idealdir."
+    # ── BİRİNCİL KREDİ ──────────────────────────────────────────
+    # Rotatif: işletme sermayesi sıkıntısı varsa her zaman öncelik
+    isletme_ihtiyac = bs.kv_borclar * 0.3
+    birincil = "Rotatif (Döner) Kredi"
+    birincil_aciklama = (
+        "Rotatif kredi, ihtiyaç duydukça çekip geri ödeyebildiğiniz "
+        "esnek bir kredi türüdür. Stok alımı, alacak finansmanı ve "
+        "günlük işletme giderleri için idealdir."
+    )
+    birincil_miktar = (
+        f"Tahmini ihtiyaç: {isletme_ihtiyac:,.0f} – {isletme_ihtiyac*1.5:,.0f} TL "
+        f"(KV borçlarınızın yaklaşık %%30–50'si)"
+    )
+
+    # Alacak tahsil süresine göre spot kredi önerisi
+    if alacak_gun >= 45 and bs.ticari_alacaklar > 0:
+        aylik_tahsilat = bs.net_satislar / 12 if bs.net_satislar else 0
+        gun_fmt = f"{alacak_gun:.0f}"
+        neden = (
+            f"Ortalama alacak tahsil süreniz {gun_fmt} gün. "
+            f"Aylık ortalama tahsilatınız {aylik_tahsilat:,.0f} TL civarında. "
+            f"Bu durumda {gun_fmt} günlük vadeli spot krediler kullanarak "
+            f"hem kısa vadeli kalır hem de limitiniz sürekli kapanıp açılır. "
+            f"Rotatif ile birlikte kullanıldığında nakit akışınızı optimize eder."
         )
-        birincil_miktar = (
-            f"Tahmini ihtiyaç: {isletme_ihtiyac:,.0f} – {isletme_ihtiyac*1.5:,.0f} TL "
-            f"(KV borçlarınızın yaklaşık %30–50'si)"
-        )
+    elif cari_oran < 1.3 or nds > 70:
         neden = (
             f"Nakit dönüşüm süreniz {nds:.0f} gün — paranız uzun süre "
             f"stok ve alacakta bağlı kalıyor. Rotatif kredi bu döngüyü finanse eder."
         )
-    elif duran_varlik_orani > 0.5 and bs.banka_kredileri_uv < bs.duran_varliklar * 0.3:
-        # Duran varlıklar yüksek, yatırım finansmanı eksik
-        birincil = "Yatırım Kredisi"
-        birincil_aciklama = (
-            "Duran varlıklarınız toplam aktifinizin önemli bir bölümünü oluşturuyor "
-            "ancak uzun vadeli banka finansmanı görece düşük. "
-            "Yatırım kredisi, makine, ekipman veya gayrimenkul alımı için "
-            "uzun vadeli ve düşük taksitli finansman sağlar."
-        )
-        birincil_miktar = (
-            f"Duran varlık değeriniz: {bs.duran_varliklar:,.0f} TL. "
-            f"Mevcut uzun vadeli kredi: {bs.banka_kredileri_uv:,.0f} TL."
-        )
-        neden = (
-            "Duran varlıklarınızın büyük bölümü kısa vadeli finansmanla karşılanıyor "
-            "görünüyor. Bu vade uyumsuzluğu nakit akışı baskısı yaratır."
-        )
     else:
-        # Genel işletme kredisi
-        birincil = "Spot / Taksitli İşletme Kredisi"
-        birincil_aciklama = (
-            "Belirli bir tutar için tek seferlik kredi kullanımı. "
-            "Sabit taksitlerle geri ödenir. Nakit akışı planlaması daha kolaydır. "
-            "Stok yenileme, vergi ödemeleri veya kısa vadeli nakit ihtiyaçları için uygundur."
-        )
-        birincil_miktar = (
-            f"Tahmini ihtiyaç: {bs.favok * 0.5:,.0f} – {bs.favok:,.0f} TL "
-            f"(6 aylık işletme kârı bazında)"
-        )
         neden = (
-            "Finansal yapınız genel işletme ihtiyacına işaret ediyor. "
-            "Spot kredi en esnek ve yaygın kullanılan KOBİ kredi türüdür."
+            "İşletme sermayenizi esnek tutmak ve nakit akışı dalgalanmalarını "
+            "yönetmek için rotatif kredi ideal bir araçtır."
         )
 
-    # Alternatif türler
+    # ── ALTERNATİF KREDİLER ──────────────────────────────────────
     alternatifler = []
 
-    if sektor == "ticaret" and bs.ticari_alacaklar > bs.net_satislar * 0.1:
+    # 1. Taksitli İşletme Kredisi (12/24 ay) — duran varlık yatırımı varsa
+    if duran_oran > 0.4 or bs.banka_kredileri_uv < bs.duran_varliklar * 0.2:
         alternatifler.append({
-            "tur": "Faktoring",
+            "tur": "Taksitli İşletme Kredisi (12–24 ay)",
             "aciklama": (
-                f"Ticari alacaklarınız {bs.ticari_alacaklar:,.0f} TL. "
-                "Faktoring ile alacaklarınızı beklemeden nakde çevirebilirsiniz. "
-                "Banka kredisi yerine alternatif veya tamamlayıcı finansman."
+                f"Duran varlıklarınız {bs.duran_varliklar:,.0f} TL. "
+                "Makine, ekipman veya yapısal yatırımlar için 12–24 ay vadeli "
+                "taksitli kredi uygundur. Sabit taksitlerle nakit akışı planlaması kolaylaşır. "
+                "Not: Mevcut yüksek faiz ortamında 36 ay ve üzeri vadeyi tercih etmeyin."
             ),
         })
 
-    if bs.net_satislar > 5_000_000:
+    # 2. Çek / Senet İskontosu — alacak senedi varsa
+    if bs.ticari_alacaklar > 0 and alacak_gun > 45:
         alternatifler.append({
             "tur": "Çek / Senet İskontosu",
             "aciklama": (
+                f"Alacak tahsil süreniz {alacak_gun:.0f} gün. "
                 "Müşterilerinizden aldığınız çek ve senetleri vadesi gelmeden "
-                "bankaya iskonto ettirerek nakit elde edebilirsiniz. "
+                "bankaya iskonto ettirerek hızlıca nakde çevirebilirsiniz. "
                 "Düşük maliyetli ve hızlı bir finansman yöntemi."
             ),
         })
 
-    if sektor in ("uretim", "ticaret") and bs.stoklar > bs.net_satislar * 0.08:
+    # 3. Stok / Emtia Kredisi — stok yüksekse
+    if sektor in ("uretim", "ticaret") and bs.stoklar > bs.net_satislar * 0.1:
         alternatifler.append({
             "tur": "Stok / Emtia Kredisi",
             "aciklama": (
@@ -350,13 +340,40 @@ def _kredi_turu_oneri(bs, skor_sonuc: "SkorSonuc", sektor: str) -> KrediTuruOner
             ),
         })
 
-    alternatifler.append({
-        "tur": "KGF Destekli Kredi",
-        "aciklama": (
-            "Teminat yetersizliği durumunda KGF kefaleti ile banka limitinizi artırabilirsiniz. "
-            "KGF başvurusu bankanız aracılığıyla yapılır, ek belge gerekmez."
-        ),
-    })
+    # 4. Faktoring — sadece skor >= 65 olan güçlü firmalara öner
+    if skor >= 65 and alacak_gun > 60 and bs.ticari_alacaklar > 0:
+        alternatifler.append({
+            "tur": "Faktoring",
+            "aciklama": (
+                f"Ticari alacaklarınız {bs.ticari_alacaklar:,.0f} TL ve "
+                f"tahsil süreniz {alacak_gun:.0f} gün. "
+                "Faktoring ile alacaklarınızı beklemeden nakde çevirebilirsiniz. "
+                "Banka kredisine alternatif veya tamamlayıcı bir finansman yöntemidir."
+            ),
+        })
+
+    # 5. Sat-geri-kirala — duran varlık yüksek ve nakit sıkışıksa
+    if duran_oran > 0.4 and cari_oran < 1.2:
+        alternatifler.append({
+            "tur": "Sat-Geri-Kirala (Sale & Leaseback)",
+            "aciklama": (
+                f"Maddi duran varlıklarınız {bs.maddi_duran_varliklar:,.0f} TL. "
+                "Sahip olduğunuz gayrimenkul veya ekipmanı satıp geri kiralayarak "
+                "önemli miktarda nakit açığa çıkarabilirsiniz. "
+                "Varlığı kullanmaya devam ederken likiditinizi artırırsınız."
+            ),
+        })
+
+    # 6. KGF — teminat yetersizse veya skor 55-70 arasındaysa
+    maddi_duran_oran = bs.maddi_duran_varliklar / bs.toplam_aktif if bs.toplam_aktif else 0
+    if 55 <= skor <= 70 or maddi_duran_oran < 0.15:
+        alternatifler.append({
+            "tur": "KGF Destekli Kredi",
+            "aciklama": (
+                "Teminat yetersizliği durumunda KGF kefaleti ile banka limitinizi artırabilirsiniz. "
+                "KGF başvurusu bankanız aracılığıyla yapılır, ek belge gerekmez."
+            ),
+        })
 
     return KrediTuruOneri(
         birincil_tur=birincil,
