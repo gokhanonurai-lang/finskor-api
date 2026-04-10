@@ -90,72 +90,66 @@ class TamRapor:
 # ─────────────────────────────────────────────
 
 def _yonetici_ozeti(skor_sonuc: "SkorSonuc", bs) -> str:
-    skor = skor_sonuc.skor
-    harf = skor_sonuc.harf
-    favok = bs.favok
-    mevcut_borc = bs.finansal_borclar
+    import anthropic, os, re
 
-    # Genel durum cümlesi
-    if skor >= 85:
-        genel = (
-            f"Şirketinizin finansal yapısı bankacılık standartlarına göre mükemmel "
-            f"seviyededir. {harf} notu ile kredi başvurunuzda teminat olarak yalnızca "
-            f"kişisel kefalet yeterli olacaktır."
-        )
-    elif skor >= 75:
-        genel = (
-            f"Şirketinizin finansal yapısı güçlü görünmektedir. {harf} notu ile "
-            f"bankalardan uygun koşullarda kredi kullanabilirsiniz. "
-            f"Küçük iyileştirmelerle AAA bandına ulaşmanız mümkündür."
-        )
-    elif skor >= 65:
-        genel = (
-            f"Şirketinizin finansal yapısı iyi düzeydedir ancak bazı alanlarda "
-            f"iyileştirme yapılması gereklidir. {harf} notu ile bankalar kredi açacaktır, "
-            f"ancak teminat talep edebilirler."
-        )
-    elif skor >= 55:
-        genel = (
-            f"Şirketinizin finansal yapısı orta düzeydedir. {harf} notu ile kredi "
-            f"alabilirsiniz ancak teminat zorunluluğu olacak ve faiz oranınız "
-            f"daha yüksek bankalar tarafından belirlenebilir."
-        )
-    elif skor >= 45:
-        genel = (
-            f"Şirketinizin finansal yapısında önemli zayıflıklar tespit edilmiştir. "
-            f"{harf} notu ile kredi imkânınız sınırlı olup güçlü teminat "
-            f"göstermeniz gerekmektedir."
-        )
-    else:
-        genel = (
-            f"Şirketinizin finansal yapısı bankacılık değerlendirmesinde kritik "
-            f"seviyededir. Öncelikle bilanço iyileştirme çalışması yapılmadan "
-            f"kredi başvurusu yapılması önerilmemektedir."
-        )
-
-    # Kırmızı bayrak varsa ek uyarı
-    bayrak_mesaji = ""
+    guclu = [(r.ad, r.deger_fmt) for r in skor_sonuc.rasyolar if r.bant in ("mukemmel", "iyi")]
+    zayif = [(r.ad, r.deger_fmt) for r in skor_sonuc.rasyolar if r.bant in ("kotu", "zayif")]
     kritik_bayraklar = [b for b in skor_sonuc.kirmizi_bayraklar if b.ciddiyet == "kritik"]
-    if kritik_bayraklar:
-        bayrak_mesaji = (
-            f"\n\nDİKKAT: Analizde {len(kritik_bayraklar)} kritik uyarı tespit edilmiştir. "
-            f"Bu uyarılar banka değerlendirmesinde doğrudan olumsuz etki yaratır ve "
-            f"kredi başvurusunun reddedilmesine neden olabilir."
-        )
 
-    # Limit bilgisi
+    guclu_str = ", ".join([f"{ad} {fmt}" for ad, fmt in guclu[:5]])
+    zayif_str = ", ".join([f"{ad} {fmt}" for ad, fmt in zayif[:5]])
+    bayrak_str = ", ".join([b.mesaj[:60] for b in kritik_bayraklar[:3]]) if kritik_bayraklar else "Yok"
+
     carpan_map = {"AAA": 3.0, "AA": 2.5, "A": 2.0}
-    carpan = carpan_map.get(harf)
-    limit_mesaji = ""
-    if carpan and favok > 0:
-        kullanilabilir = max(0, favok * carpan - mevcut_borc)
-        limit_mesaji = (
-            f"\n\nMevcut finansal yapınızla tahmini kullanılabilir kredi limitiniz "
-            f"{kullanilabilir:,.0f} TL'dir. "
-            f"(Hesaplama: Yıllık işletme kârı × {carpan} − mevcut banka borçları)"
-        )
+    carpan = carpan_map.get(skor_sonuc.harf, 0)
+    kullanilabilir = max(0, bs.favok * carpan - bs.finansal_borclar) if carpan else 0
+    favok_marj = bs.favok / bs.net_satislar * 100 if bs.net_satislar else 0
 
-    return genel + bayrak_mesaji + limit_mesaji
+    prompt = f"""Sen deneyimli bir Türk bankacısın. Aşağıdaki finansal verilere göre firma sahibine hitap eden, samimi ve net bir yönetici özeti yaz. 3-4 paragraf olsun. Türkçe yaz.
+
+FİRMA FİNANSAL VERİLERİ:
+- Kredi Skoru: {skor_sonuc.skor}/100 ({skor_sonuc.harf} bandı)
+- Toplam Aktif: {bs.toplam_aktif:,.0f} TL
+- Net Satışlar: {bs.net_satislar:,.0f} TL
+- FAVÖK: {bs.favok:,.0f} TL (Marj: %{favok_marj:.1f})
+- Net Kâr: {bs.net_kar:,.0f} TL
+- Özkaynaklar: {bs.ozkaynaklar:,.0f} TL
+- KV Borçlar: {bs.kv_borclar:,.0f} TL
+- UV Borçlar: {bs.uv_borclar:,.0f} TL
+- Finansal Borçlar: {bs.finansal_borclar:,.0f} TL
+- Tahmini Kullanılabilir Limit: {kullanilabilir:,.0f} TL
+
+GÜÇLÜ YÖNLER: {guclu_str}
+ZAYIF YÖNLER: {zayif_str}
+KRİTİK UYARILAR: {bayrak_str}
+
+YAZIM KURALLARI:
+1. İlk paragraf: Genel finansal durum ve skor bandının ne anlama geldiğini açıkla
+2. İkinci paragraf: En önemli güçlü yönleri somut rakamlarla anlat
+3. Üçüncü paragraf: En kritik zayıflıkları ve bunların banka değerlendirmesine etkisini anlat
+4. Dördüncü paragraf: Ne yapılması gerektiğini ve kredi potansiyelini özetle
+- Sayıları TL formatında yaz
+- Şirketiniz diye hitap et
+- Teknik jargondan kaçın, sade dil kullan
+- 250-350 kelime arası olsun"""
+
+    try:
+        client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
+        message = client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=800,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        return message.content[0].text.strip()
+    except Exception as e:
+        harf = skor_sonuc.harf
+        skor = skor_sonuc.skor
+        if skor >= 75:
+            return f"Şirketinizin finansal yapısı güçlü görünmektedir. {harf} notu ile bankalardan uygun koşullarda kredi kullanabilirsiniz."
+        elif skor >= 55:
+            return f"Şirketinizin finansal yapısı orta düzeydedir. {harf} notu ile kredi alabilirsiniz ancak teminat zorunluluğu olacaktır."
+        else:
+            return f"Şirketinizin finansal yapısında önemli zayıflıklar tespit edilmiştir. {harf} notu ile kredi imkânınız sınırlıdır."
 
 
 # ─────────────────────────────────────────────
