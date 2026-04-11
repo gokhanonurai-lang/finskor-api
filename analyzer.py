@@ -154,6 +154,8 @@ def _analiz_borc_ozkaynak(d: float) -> str:
             "Yeni kredi temini çok zorlaşır.")
 
 def _analiz_finansal_kaldırac(d: float) -> str:
+    if d == 0:
+        return "Özkaynak değeri sıfır olduğundan finansal kaldıraç hesaplanamıyor."
     if d <= 2.0:
         return (f"Toplam varlıklarınızın {100/d:.0f}%'i özkaynaklardan geliyor. "
                 "Finansal yapınız sağlam ve kırılganlığa karşı dirençli.")
