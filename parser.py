@@ -313,8 +313,8 @@ ACCOUNT_MAP: list[tuple[list[str], str, int]] = [
     (["610", "611", "612"], "net_satislar", -1),   # Satış indirimleri
     (["620", "621", "622", "623"], "satislarin_maliyeti", 1),
     (["630", "633"], "arge_giderleri", 1),
-    (["631"], "genel_yonetim_giderleri", 1),
-    (["632"], "genel_yonetim_giderleri", 1),  # Genel Yonetim Giderleri
+    (["631"], "pazarlama_giderleri", 1),
+    (["632"], "genel_yonetim_giderleri", 1),
     (["640", "641", "642", "643", "644",
       "645", "646", "647", "648", "649"], "diger_faaliyet_gelirleri", 1),
     (["650", "651", "652", "653", "654",
@@ -322,7 +322,7 @@ ACCOUNT_MAP: list[tuple[list[str], str, int]] = [
     (["660", "661"], "finansman_giderleri", 1),
     (["670", "671", "672", "673", "674",
       "675", "676", "677", "678", "679"], "finansman_gelirleri", 1),
-    (["691", "692"], "vergi_gideri", 1),
+    (["691"], "vergi_gideri", 1),  # Sadece vergi karşılığı, 692 net kar hesabı
 ]
 
 # Hızlı lookup: hesap_kodu → (field_adı, işaret) listesi
