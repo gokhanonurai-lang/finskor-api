@@ -105,39 +105,74 @@ def _yonetici_ozeti(skor_sonuc: "SkorSonuc", bs) -> str:
     kullanilabilir = max(0, bs.favok * carpan - bs.finansal_borclar) if carpan else 0
     favok_marj = bs.favok / bs.net_satislar * 100 if bs.net_satislar else 0
 
-    prompt = f"""Sen deneyimli bir Türk bankacısın. Aşağıdaki finansal verilere göre firma sahibine hitap eden, samimi ve net bir yönetici özeti yaz. 3-4 paragraf olsun. Türkçe yaz.
+    limit_str = f"{kullanilabilir:,.0f} TL" if kullanilabilir > 0 else "Mevcut finansal yapıda kredi limiti düşük — iyileştirme gerekli"
+    toplam_aktif = bs.toplam_aktif or 1
+
+    prompt = f"""Sen deneyimli bir Türk bankacısın. Aşağıdaki finansal verilere göre firma sahibine hitap eden, samimi ve net bir yönetici özeti yaz. Türkçe yaz.
 
 FİRMA FİNANSAL VERİLERİ:
 - Kredi Skoru: {skor_sonuc.skor}/100 ({skor_sonuc.harf} bandı)
-- Toplam Aktif: {bs.toplam_aktif:,.0f} TL
 - Net Satışlar: {bs.net_satislar:,.0f} TL
 - FAVÖK: {bs.favok:,.0f} TL (Marj: %{favok_marj:.1f})
 - Net Kâr: {bs.net_kar:,.0f} TL
-- Özkaynaklar: {bs.ozkaynaklar:,.0f} TL
-- KV Borçlar: {bs.kv_borclar:,.0f} TL
-- UV Borçlar: {bs.uv_borclar:,.0f} TL
-- Finansal Borçlar: {bs.finansal_borclar:,.0f} TL
-- Tahmini Kullanılabilir Limit: {kullanilabilir:,.0f} TL
+- Toplam Aktif: {bs.toplam_aktif:,.0f} TL
+- Tahmini Kullanılabilir Limit: {limit_str}
+
+HESAP DETAYLARI (bankacı gözüyle yorumlanacak):
+DÖNEN VARLIKLAR:
+- Kasa (100): {bs.kasa:,.0f} TL (%{bs.kasa/toplam_aktif*100:.1f} aktif)
+- Banka (102): {bs.banka:,.0f} TL (%{bs.banka/toplam_aktif*100:.1f} aktif)
+- Ticari Alacaklar (120-121): {bs.ticari_alacaklar:,.0f} TL (%{bs.ticari_alacaklar/toplam_aktif*100:.1f} aktif)
+- Stoklar (150-158): {bs.stoklar:,.0f} TL (%{bs.stoklar/toplam_aktif*100:.1f} aktif)
+- Diğer Dönen Varlıklar: {bs.diger_donen_varliklar:,.0f} TL
+
+DURAN VARLIKLAR:
+- Maddi Duran Varlıklar (250-258): {bs.maddi_duran_varliklar:,.0f} TL (%{bs.maddi_duran_varliklar/toplam_aktif*100:.1f} aktif)
+- Mali Duran Varlıklar (240-248): {bs.mali_duran_varliklar:,.0f} TL
+- Maddi Olmayan Duran Varlıklar: {bs.maddi_olmayan_duv:,.0f} TL
+
+YABANCI KAYNAKLAR:
+- Banka Kredileri KV (300-301): {bs.banka_kredileri_kv:,.0f} TL
+- Ticari Borçlar KV (320-321): {bs.ticari_borclar_kv:,.0f} TL
+- Ortaklara Borçlar (331): {bs.ortaklara_borclar:,.0f} TL
+- Banka Kredileri UV (400-401): {bs.banka_kredileri_uv:,.0f} TL
+
+ÖZKAYNAKLAR:
+- Ödenmiş Sermaye (500): {bs.odenmis_sermaye:,.0f} TL
+- Geçmiş Yıl Kârları (570): {bs.gecmis_yil_karlari:,.0f} TL
+- Dönem Net Kârı (590): {bs.donem_net_kari:,.0f} TL
+- Toplam Özkaynaklar: {bs.ozkaynaklar:,.0f} TL
+
+GELİR TABLOSU:
+- Satışların Maliyeti: {bs.satislarin_maliyeti:,.0f} TL (Brüt Marj: %{(bs.net_satislar-bs.satislarin_maliyeti)/bs.net_satislar*100 if bs.net_satislar else 0:.1f})
+- Pazarlama Giderleri: {bs.pazarlama_giderleri:,.0f} TL
+- Genel Yönetim Giderleri: {bs.genel_yonetim_giderleri:,.0f} TL
+- Finansman Giderleri: {bs.finansman_giderleri:,.0f} TL
+- Finansman Gelirleri: {bs.finansman_gelirleri:,.0f} TL
 
 GÜÇLÜ YÖNLER: {guclu_str}
 ZAYIF YÖNLER: {zayif_str}
 KRİTİK UYARILAR: {bayrak_str}
 
 YAZIM KURALLARI:
-1. İlk paragraf: Genel finansal durum ve skor bandının ne anlama geldiğini açıkla
-2. İkinci paragraf: En önemli güçlü yönleri somut rakamlarla anlat
-3. Üçüncü paragraf: En kritik zayıflıkları ve bunların banka değerlendirmesine etkisini anlat
-4. Dördüncü paragraf: Ne yapılması gerektiğini ve kredi potansiyelini özetle
+Aşağıdaki 5 bölümü sırayla yaz, her biri bir paragraf olsun:
+
+1. GENEL DEĞERLENDİRME: Skor bandının ne anlama geldiğini, şirketin genel finansal profilini anlat.
+2. VARLIK YAPISI YORUMU: Kasa yüksekse "bankalar fiktif kabul eder, sermayeden mahsup edilir" gibi bankacı perspektifinden uyarılar ver. Alacaklar yüksekse tahsilat riskine dikkat çek. Stoklar şişkince "stok devir hızı yavaş, bu nakit akışını zorlar" de. Her kalem için aktife oranını kullanarak somut yorum yap.
+3. BORÇ VE ÖZKAYNAK YAPISI: Ortaklara borç yüksekse "bankalar bunu örtülü kâr dağıtımı olarak değerlendirebilir" de. Finansman giderleri yüksekse faiz yüküne dikkat çek. Sermaye yetersizse bunu vurgula.
+4. GÜÇLÜ VE ZAYIF YÖNLER: En kritik güçlü ve zayıf yönleri somut rakamlarla anlat.
+5. KREDİ POTANSİYELİ VE ÖNERİLER: Ne yapılması gerektiğini ve kredi potansiyelini özetle.
+
 - Sayıları TL formatında yaz
 - Şirketiniz diye hitap et
-- Teknik jargondan kaçın, sade dil kullan
-- 250-350 kelime arası olsun"""
+- Teknik jargondan kaçın ama bankacı uyarılarını net ver
+- İstediğin kadar yaz, kesme"""
 
     try:
         client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
         message = client.messages.create(
             model="claude-sonnet-4-20250514",
-            max_tokens=800,
+            max_tokens=2000,
             messages=[{"role": "user", "content": prompt}]
         )
         return message.content[0].text.strip()
