@@ -46,13 +46,10 @@ VERİLER:
 - Skor: {sonuc.skor}/100
 - Bant: {sonuc.harf}
 
-NOT: Net kâr FAVÖK'ten yüksek olabilir (finansman gelirleri ve olağandışı gelirler eklenince). Bu normal.
-NOT: Aktif-pasif farkı gelir tablosu hesapları içeren mizanlarda %5-20 olabilir, bu normal.
-
-KONTROL ET:
+KONTROL ET ve sadece aşağıdaki durumlarda HATA ver, aksi halde GECER yaz:
 1. Net satışlar sıfır veya negatif mi?
 2. Toplam aktif sıfır veya 100,000 TL altında mı?
-3. Aktif-pasif farkı %5'ten fazla mı?
+3. Aktif-pasif fark oranı %5 veya daha fazla mı? (%3.2 gibi %5 altı değerler GECER'dir)
 
 Sadece GECER veya HATA: [kısa açıklama] yaz."""
 
