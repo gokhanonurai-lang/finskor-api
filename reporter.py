@@ -72,6 +72,7 @@ class TamRapor:
     sektor: str
     # Bölümler
     yonetici_ozeti: str
+    potansiyel_raporu: str
     guclu_yonler: list[str]
     zayif_yonler: list[str]
     rasyo_analizleri: list
@@ -426,6 +427,65 @@ def _kredi_turu_oneri(bs, skor_sonuc: "SkorSonuc", sektor: str) -> KrediTuruOner
 # ─────────────────────────────────────────────
 # NAKİT AKIŞ ANALİZİ
 # ─────────────────────────────────────────────
+
+
+def _potansiyel_raporu(skor_sonuc: "SkorSonuc", bs) -> str:
+    import anthropic, os
+
+    kotu_zayif = [
+        r for r in skor_sonuc.rasyolar
+        if r.bant in ("kotu", "zayif")
+    ]
+    if not kotu_zayif:
+        return ""
+
+    toplam_aktif = bs.toplam_aktif or 1
+    kayip_puan = sum(r.max_puan - r.puan for r in kotu_zayif)
+    mevcut_skor = skor_sonuc.skor
+    maksimum_skor = min(100, mevcut_skor + kayip_puan)
+
+    rasyo_detay = ""
+    for r in kotu_zayif:
+        kayip = r.max_puan - r.puan
+        rasyo_detay += f"- {r.ad}: {r.deger_fmt} (bant: {r.bant}, kayıp puan: {kayip}/{r.max_puan})\n"
+
+    prompt = f"""Sen deneyimli bir Türk bankacı ve finansal danışmansın. Aşağıdaki firmaya özel verilerle, firmanın finansal skorunu maksimuma çıkarması için detaylı bir yol haritası yaz. Türkçe yaz.
+
+FİRMA VERİLERİ:
+- Mevcut Skor: {mevcut_skor}/100
+- Senaryo ile Ulaşılabilir: {min(100, mevcut_skor + 9)} (bilanço aksiyonlarıyla)
+- Operasyonel İyileştirmeyle Maksimum: {maksimum_skor}/100
+- Net Satışlar: {bs.net_satislar:,.0f} TL
+- Ticari Alacaklar: {bs.ticari_alacaklar:,.0f} TL
+- Stoklar: {bs.stoklar:,.0f} TL
+- Satışların Maliyeti: {bs.satislarin_maliyeti:,.0f} TL
+- Toplam Aktif: {bs.toplam_aktif:,.0f} TL
+
+İYİLEŞTİRİLMESİ GEREKEN RASYOLAR:
+{rasyo_detay}
+
+YAZIM KURALLARI:
+- Her rasyo için ayrı bir başlık aç
+- Başlıkta rasyonun adını, mevcut değerini ve kazanılacak puanı yaz
+- Her rasyonun altında:
+  1. Neden bu kadar kötü olduğunu somut rakamlarla açıkla
+  2. Mükemmele çıkmak için hangi rakama ulaşması gerektiğini hesapla
+  3. Buna ulaşmak için 3-4 somut, uygulanabilir adım ver
+  4. Bu adımların ne kadar sürede sonuç vereceğini belirt
+- Bankacı gözüyle yaz — teknik ama anlaşılır
+- Şirketiniz diye hitap et
+- Rakamları TL formatında yaz"""
+
+    try:
+        client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
+        message = client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=3000,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        return message.content[0].text.strip()
+    except Exception:
+        return ""
 
 def _nakit_akis_analiz(bs, skor_sonuc: "SkorSonuc") -> NakitAkisAnaliz:
     """
@@ -933,6 +993,7 @@ def rapor_olustur(
         firma_adi=firma_adi,
         sektor=sektor,
         yonetici_ozeti=_yonetici_ozeti(skor_sonuc, bs),
+        potansiyel_raporu=_potansiyel_raporu(skor_sonuc, bs),
         guclu_yonler=_guclu_yonler(skor_sonuc, analizler),
         zayif_yonler=_zayif_yonler(skor_sonuc, analizler),
         rasyo_analizleri=analizler,
