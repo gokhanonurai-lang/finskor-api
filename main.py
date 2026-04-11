@@ -67,6 +67,8 @@ Sadece GECER veya HATA: [kısa açıklama] yaz."""
             return True, "OK"
         elif sonuc.startswith("HATA:"):
             return False, sonuc[5:].strip()
+        elif "GECER" in sonuc:
+            return True, "OK"
         else:
             return True, "OK"
     except Exception as e:
