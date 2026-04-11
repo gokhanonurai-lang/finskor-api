@@ -250,6 +250,7 @@ async def analyze(
 
         return {
             "firma_ozet": firma_ozet,
+            "yonetici_ozeti": rapor.yonetici_ozeti,
             "skor": sonuc.skor,
             "harf": sonuc.harf,
             "kredi_band": sonuc.kredi_band,
