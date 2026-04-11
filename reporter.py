@@ -480,20 +480,20 @@ def _nakit_akis_analiz(bs, skor_sonuc: "SkorSonuc") -> NakitAkisAnaliz:
     elif kullanim_oran <= 0.60:
         kapasite = "makul"
         yorum = (
-            f"Aylık işletme kârınızın {toplam_oran*100:.0f}%'i borç servisine gidecek. "
+            f"Aylık işletme kârınızın {mevcut_oran*100:.0f}%'i borç servisine gidecek. "
             f"Yönetilebilir bir yük ancak beklenmedik gider durumunda dikkatli olunmalı."
         )
     elif kullanim_oran <= 0.80:
         kapasite = "riskli"
         yorum = (
-            f"Aylık işletme kârınızın {toplam_oran*100:.0f}%'i borç servisine gidecek. "
+            f"Aylık işletme kârınızın {mevcut_oran*100:.0f}%'i borç servisine gidecek. "
             f"Bu yüksek bir oran. Satışlarda küçük bir düşüş ödeme güçlüğü yaratabilir. "
             f"Kredi miktarını azaltmayı veya vadeyi uzatmayı düşünün."
         )
     else:
         kapasite = "kritik"
         yorum = (
-            f"Aylık işletme kârınızın {toplam_oran*100:.0f}%'i borç servisine gidecek — "
+            f"Aylık işletme kârınızın {mevcut_oran*100:.0f}%'i borç servisine gidecek — "
             f"kritik seviye. Bu krediyi geri ödemek çok güçtür. "
             f"Daha düşük limitten başlamanızı veya önce FAVÖK'ü artırmanızı öneririz."
         )
