@@ -52,7 +52,7 @@ NOT: Aktif-pasif farkı gelir tablosu hesapları içeren mizanlarda %5-20 olabil
 KONTROL ET:
 1. Net satışlar sıfır veya negatif mi?
 2. Toplam aktif sıfır veya 100,000 TL altında mı?
-3. Aktif-pasif farkı %25'ten fazla mı?
+3. Aktif-pasif farkı %5'ten fazla mı?
 
 Sadece GECER veya HATA: [kısa açıklama] yaz."""
 
