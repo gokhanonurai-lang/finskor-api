@@ -474,7 +474,9 @@ YAZIM KURALLARI:
   4. Bu adımların ne kadar sürede sonuç vereceğini belirt
 - Bankacı gözüyle yaz — teknik ama anlaşılır
 - Şirketiniz diye hitap et
-- Rakamları TL formatında yaz"""
+- Rakamları TL formatında yaz
+- Yazının sonuna imza, "Saygılarımla", "Başarılar dilerim", "Danışmanınız" gibi ifadeler EKLEME
+- Sadece yol haritası içeriğini yaz, kapanış cümlesi yazma"""
 
     try:
         client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
