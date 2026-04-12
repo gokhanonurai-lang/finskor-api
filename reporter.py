@@ -173,7 +173,8 @@ Aşağıdaki 5 bölümü sırayla yaz, her biri bir paragraf olsun:
   * "kredi verilmez" yerine "kredi onayı zorlaşabilir" yaz
   * "bankalar sizi AA olarak görür" gibi kesin yargılar yazma, "AA bandındaki firmalar genellikle..." şeklinde yaz
   * "limit alabilirsiniz" yerine "tahmini limit potansiyeli oluşabilir" yaz
-  * Hiçbir zaman kredi kararı verir gibi yazma, her zaman tahmini/algoritmik analiz olduğunu hissettir"""
+  * Hiçbir zaman kredi kararı verir gibi yazma, her zaman tahmini/algoritmik analiz olduğunu hissettir
+  * "tavsiye ederim", "öneriyorum", "yapmanızı öneririm" gibi birinci tekil şahıs danışmanlık ifadeleri kullanma; bunların yerine "bu göstergede iyileşme sağlanması durumunda..." veya "bu adım finansal profili güçlendirebilir" formatını kullan"""
 
     try:
         client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
@@ -189,7 +190,7 @@ Aşağıdaki 5 bölümü sırayla yaz, her biri bir paragraf olsun:
         if skor >= 75:
             return f"Şirketinizin finansal yapısı güçlü görünmektedir. {harf} notu, finansal göstergeler açısından olumlu bir profil oluştuğuna işaret etmektedir."
         elif skor >= 55:
-            return f"Şirketinizin finansal yapısı orta düzeydedir. {harf} notu ile kredi alabilirsiniz ancak teminat zorunluluğu olacaktır."
+            return f"Şirketinizin finansal yapısı orta düzeydedir. {harf} notu, teminatlı finansman senaryolarında olumlu profil oluştuğuna işaret etmektedir."
         else:
             return f"Şirketinizin finansal yapısında önemli zayıflıklar tespit edilmiştir. {harf} notu ile kredi imkânınız sınırlıdır."
 
