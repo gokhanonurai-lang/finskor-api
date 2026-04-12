@@ -167,7 +167,13 @@ Aşağıdaki 5 bölümü sırayla yaz, her biri bir paragraf olsun:
 - Sayıları TL formatında yaz
 - Şirketiniz diye hitap et
 - Teknik jargondan kaçın ama bankacı uyarılarını net ver
-- İstediğin kadar yaz, kesme"""
+- İstediğin kadar yaz, kesme
+- ÖNEMLİ — DİL KURALLARI: BilancoSkor bir finansal analiz yazılımıdır, resmi kredi derecelendirme kuruluşu değildir. Bu yüzden:
+  * "kredi kullanabilirsiniz" yerine "kredi başvurusu değerlendirilebilir" yaz
+  * "kredi verilmez" yerine "kredi onayı zorlaşabilir" yaz
+  * "bankalar sizi AA olarak görür" gibi kesin yargılar yazma, "AA bandındaki firmalar genellikle..." şeklinde yaz
+  * "limit alabilirsiniz" yerine "tahmini limit potansiyeli oluşabilir" yaz
+  * Hiçbir zaman kredi kararı verir gibi yazma, her zaman tahmini/algoritmik analiz olduğunu hissettir"""
 
     try:
         client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
@@ -476,7 +482,12 @@ YAZIM KURALLARI:
 - Şirketiniz diye hitap et
 - Rakamları TL formatında yaz
 - Yazının sonuna imza, "Saygılarımla", "Başarılar dilerim", "Danışmanınız" gibi ifadeler EKLEME
-- Sadece yol haritası içeriğini yaz, kapanış cümlesi yazma"""
+- Sadece yol haritası içeriğini yaz, kapanış cümlesi yazma
+- ÖNEMLİ — DİL KURALLARI: BilancoSkor bir finansal analiz yazılımıdır, resmi kredi derecelendirme kuruluşu değildir. Bu yüzden:
+  * Kesin kredi kararı verir gibi yazma, "bu adımları uygularsanız skorunuz iyileşebilir" şeklinde yaz
+  * "kredi kullanabilirsiniz" yerine "kredi başvurusu değerlendirilebilir" kullan
+  * "kredi verilmez" yerine "kredi onayı zorlaşabilir" yaz
+  * Her zaman tahmini/algoritmik analiz olduğunu hissettir"""
 
     try:
         client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
