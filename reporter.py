@@ -169,7 +169,7 @@ Aşağıdaki 5 bölümü sırayla yaz, her biri bir paragraf olsun:
 - Teknik jargondan kaçın ama bankacı uyarılarını net ver
 - İstediğin kadar yaz, kesme
 - ÖNEMLİ — DİL KURALLARI: BilancoSkor bir finansal analiz yazılımıdır, resmi kredi derecelendirme kuruluşu değildir. Bu yüzden:
-  * "kredi kullanabilirsiniz" yerine "kredi başvurusu değerlendirilebilir" yaz
+  * "kredi kullanabilirsiniz" veya "kredi başvurusu değerlendirilebilir" yerine "finansal göstergeler olumlu profil oluştuğuna işaret etmektedir" yaz
   * "kredi verilmez" yerine "kredi onayı zorlaşabilir" yaz
   * "bankalar sizi AA olarak görür" gibi kesin yargılar yazma, "AA bandındaki firmalar genellikle..." şeklinde yaz
   * "limit alabilirsiniz" yerine "tahmini limit potansiyeli oluşabilir" yaz
@@ -187,7 +187,7 @@ Aşağıdaki 5 bölümü sırayla yaz, her biri bir paragraf olsun:
         harf = skor_sonuc.harf
         skor = skor_sonuc.skor
         if skor >= 75:
-            return f"Şirketinizin finansal yapısı güçlü görünmektedir. {harf} notu ile bankalardan uygun koşullarda kredi kullanabilirsiniz."
+            return f"Şirketinizin finansal yapısı güçlü görünmektedir. {harf} notu, finansal göstergeler açısından olumlu bir profil oluştuğuna işaret etmektedir."
         elif skor >= 55:
             return f"Şirketinizin finansal yapısı orta düzeydedir. {harf} notu ile kredi alabilirsiniz ancak teminat zorunluluğu olacaktır."
         else:
@@ -287,7 +287,7 @@ def _zayif_yonler(skor_sonuc: "SkorSonuc", analizler: list["RasyoAnaliz"]) -> li
                 "mesaj": (
                     f"{r.ad}: {r.deger_fmt} — zayıf seviyede. "
                     + (ozet_z + " " if ozet_z else "")
-                    + "İyileştirme yapılması önerilir."
+                    + "Bu göstergede iyileştirme yapılması durumunda finansal profil güçlenebilir."
                 ),
                 "iyilestir": iyilestir,
             })
@@ -296,7 +296,7 @@ def _zayif_yonler(skor_sonuc: "SkorSonuc", analizler: list["RasyoAnaliz"]) -> li
 
 
 # ─────────────────────────────────────────────
-# KREDİ TÜRÜ ÖNERİSİ
+# FİNANSMAN ARAÇLARI – GENEL BİLGİLENDİRME
 # Bilançodaki zayıflıklara ve ihtiyaca göre tespit
 # ─────────────────────────────────────────────
 
@@ -319,7 +319,7 @@ def _kredi_turu_oneri(bs, skor_sonuc: "SkorSonuc", sektor: str) -> KrediTuruOner
     birincil_aciklama = (
         "Rotatif kredi, ihtiyaç duydukça çekip geri ödeyebildiğiniz "
         "esnek bir kredi türüdür. Stok alımı, alacak finansmanı ve "
-        "günlük işletme giderleri için idealdir."
+        "günlük işletme giderleri için bu tür profillerde yaygın tercih edilen bir finansman aracıdır."
     )
     birincil_miktar = (
         f"Tahmini ihtiyaç: {isletme_ihtiyac:,.0f} – {isletme_ihtiyac*1.5:,.0f} TL "
@@ -345,7 +345,7 @@ def _kredi_turu_oneri(bs, skor_sonuc: "SkorSonuc", sektor: str) -> KrediTuruOner
     else:
         neden = (
             "İşletme sermayenizi esnek tutmak ve nakit akışı dalgalanmalarını "
-            "yönetmek için rotatif kredi ideal bir araçtır."
+            "yönetmek için rotatif kredi yaygın olarak tercih edilen bir finansman aracıdır."
         )
 
     # ── ALTERNATİF KREDİLER ──────────────────────────────────────
@@ -485,7 +485,7 @@ YAZIM KURALLARI:
 - Sadece yol haritası içeriğini yaz, kapanış cümlesi yazma
 - ÖNEMLİ — DİL KURALLARI: BilancoSkor bir finansal analiz yazılımıdır, resmi kredi derecelendirme kuruluşu değildir. Bu yüzden:
   * Kesin kredi kararı verir gibi yazma, "bu adımları uygularsanız skorunuz iyileşebilir" şeklinde yaz
-  * "kredi kullanabilirsiniz" yerine "kredi başvurusu değerlendirilebilir" kullan
+  * "kredi kullanabilirsiniz" veya "kredi başvurusu değerlendirilebilir" yerine "finansal göstergeler olumlu profil oluştuğuna işaret etmektedir" kullan
   * "kredi verilmez" yerine "kredi onayı zorlaşabilir" yaz
   * Her zaman tahmini/algoritmik analiz olduğunu hissettir"""
 
@@ -568,7 +568,7 @@ def _nakit_akis_analiz(bs, skor_sonuc: "SkorSonuc") -> NakitAkisAnaliz:
         yorum = (
             f"Aylık işletme kârınızın {mevcut_oran*100:.0f}%'i borç servisine gidecek — "
             f"kritik seviye. Bu krediyi geri ödemek çok güçtür. "
-            f"Daha düşük limitten başlamanızı veya önce FAVÖK'ü artırmanızı öneririz."
+            f"Daha düşük limit veya FAVÖK artışı bu göstergeyi olumlu etkileyebilir."
         )
 
     def fmt_tl(v):
