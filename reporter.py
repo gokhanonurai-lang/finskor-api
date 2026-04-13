@@ -1025,6 +1025,6 @@ def rapor_olustur(
         senaryolar=senaryolar,
         banka_hazirlik=_banka_hazirlik(skor_sonuc, bs),
         zaman_cizelgesi=_zaman_cizelgesi(skor_sonuc, senaryolar),
-        skor_iyilestirme=_skor_iyilestirme_yol_haritasi(bs, skor_sonuc, analizler),
+        skor_iyilestirme=_potansiyel_raporu(skor_sonuc, bs),
         disclaimer=DISCLAIMER,
     )
