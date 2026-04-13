@@ -494,19 +494,21 @@ YAZIM KURALLARI:
   * "kredi verilmez" yerine "kredi onayı zorlaşabilir" yaz
   * Her zaman tahmini/algoritmik analiz olduğunu hissettir"""
 
-    try:
-        client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
-        message = client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=3000,
-            messages=[{"role": "user", "content": prompt}]
-        )
-        return message.content[0].text.strip()
-    except Exception as e:
-        import traceback
-        print(f'[potansiyel_raporu ERROR] {e}')
-        traceback.print_exc()
-        return ""
+    import time
+    for attempt in range(3):
+        try:
+            client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
+            message = client.messages.create(
+                model="claude-sonnet-4-20250514",
+                max_tokens=3000,
+                messages=[{"role": "user", "content": prompt}]
+            )
+            return message.content[0].text.strip()
+        except Exception as e:
+            print(f'[potansiyel_raporu ERROR attempt {attempt+1}] {e}')
+            if attempt < 2:
+                time.sleep(3 + attempt * 2)
+    return ""
 
 def _nakit_akis_analiz(bs, skor_sonuc: "SkorSonuc") -> NakitAkisAnaliz:
     """
