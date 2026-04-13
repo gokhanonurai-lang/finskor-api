@@ -192,7 +192,7 @@ Aşağıdaki 5 bölümü sırayla yaz, her biri bir paragraf olsun:
         elif skor >= 55:
             return f"Şirketinizin finansal yapısı orta düzeydedir. {harf} notu, teminatlı finansman senaryolarında olumlu profil oluştuğuna işaret etmektedir."
         else:
-            return f"Şirketinizin finansal yapısında önemli zayıflıklar tespit edilmiştir. {harf} notu ile kredi imkânınız sınırlıdır."
+            return f"Şirketinizin finansal yapısında önemli zayıflıklar tespit edilmiştir. {harf} notu, mevcut finansal profilde kredi erişiminin zorlaşabileceğine işaret etmektedir."
 
 
 # ─────────────────────────────────────────────
