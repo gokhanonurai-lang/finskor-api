@@ -270,7 +270,7 @@ def _zayif_yonler(skor_sonuc: "SkorSonuc", analizler: list["RasyoAnaliz"]) -> li
                 "mesaj": (
                     f"{r.ad}: {r.deger_fmt} — kritik seviyede. "
                     + (ozet_k + " " if ozet_k else "")
-                    + "Bu rasyo bankacılık değerlendirmesinde olumsuz etki yaratıyor."
+                    + "Bu rasyo kredilendirilme sürecinizi olumsuz etkileyebilir."
                 ),
                 "iyilestir": iyilestir,
             })
@@ -563,7 +563,7 @@ def _nakit_akis_analiz(bs, skor_sonuc: "SkorSonuc") -> NakitAkisAnaliz:
         yorum = (
             f"Aylık işletme kârınızın {mevcut_oran*100:.0f}%'i borç servisine gidecek. "
             f"Bu yüksek bir oran. Satışlarda küçük bir düşüş ödeme güçlüğü yaratabilir. "
-            f"Kredi miktarını azaltmayı veya vadeyi uzatmayı düşünün."
+            f"Bu oran, satışlarda olası dalgalanmalara karşı hassasiyet oluşturabilir."
         )
     else:
         kapasite = "kritik"
