@@ -83,6 +83,7 @@ class TamRapor:
     senaryolar: list[SenaryoSonuc]
     banka_hazirlik: BankaHazirlik
     zaman_cizelgesi: list[dict]
+    skor_iyilestirme: str
     disclaimer: str
 
 
@@ -501,7 +502,10 @@ YAZIM KURALLARI:
             messages=[{"role": "user", "content": prompt}]
         )
         return message.content[0].text.strip()
-    except Exception:
+    except Exception as e:
+        import traceback
+        print(f'[potansiyel_raporu ERROR] {e}')
+        traceback.print_exc()
         return ""
 
 def _nakit_akis_analiz(bs, skor_sonuc: "SkorSonuc") -> NakitAkisAnaliz:
@@ -1021,5 +1025,6 @@ def rapor_olustur(
         senaryolar=senaryolar,
         banka_hazirlik=_banka_hazirlik(skor_sonuc, bs),
         zaman_cizelgesi=_zaman_cizelgesi(skor_sonuc, senaryolar),
+        skor_iyilestirme=_skor_iyilestirme_yol_haritasi(bs, skor_sonuc, analizler),
         disclaimer=DISCLAIMER,
     )
