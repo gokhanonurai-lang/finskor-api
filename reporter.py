@@ -174,6 +174,7 @@ Aşağıdaki 5 bölümü sırayla yaz, her biri bir paragraf olsun:
   * "bankalar sizi AA olarak görür" gibi kesin yargılar yazma, "AA bandındaki firmalar genellikle..." şeklinde yaz
   * "limit alabilirsiniz" yerine "tahmini limit potansiyeli oluşabilir" yaz
   * Hiçbir zaman kredi kararı verir gibi yazma, her zaman tahmini/algoritmik analiz olduğunu hissettir
+  * "bankalar tarafından düşük risk profili olarak değerlendirilmekte" gibi banka adına kesin yargı yazma; yerine "AA bandındaki firmalar genellikle düşük risk göstergelerine sahip olmaktadır" formatını kullan
   * "tavsiye ederim", "öneriyorum", "yapmanızı öneririm" gibi birinci tekil şahıs danışmanlık ifadeleri kullanma; bunların yerine "bu göstergede iyileşme sağlanması durumunda..." veya "bu adım finansal profili güçlendirebilir" formatını kullan"""
 
     try:
