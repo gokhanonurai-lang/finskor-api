@@ -20,6 +20,28 @@ if TYPE_CHECKING:
 
 
 # ─────────────────────────────────────────────
+# CLAUDE API RETRY WRAPPER (529 Overloaded)
+# ─────────────────────────────────────────────
+def _claude_call(client, model, max_tokens, messages_list, max_retries=6):
+    import time, anthropic
+    for attempt in range(max_retries):
+        try:
+            return client.messages.create(
+                model=model,
+                max_tokens=max_tokens,
+                messages=messages_list,
+            )
+        except anthropic.APIStatusError as e:
+            if e.status_code == 529:
+                wait = min(2 ** attempt, 60)
+                print(f"[529 overloaded] {wait}s bekleniyor (deneme {attempt+1}/{max_retries})...")
+                time.sleep(wait)
+            else:
+                raise
+    raise Exception(f"Claude API {max_retries} denemede yanıt vermedi (529 overloaded)")
+
+
+# ─────────────────────────────────────────────
 # 1. VERİ MODELLERİ
 # ─────────────────────────────────────────────
 
@@ -182,11 +204,7 @@ Aşağıdaki 5 bölümü sırayla yaz, her biri bir paragraf olsun:
 
     try:
         client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
-        message = client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=2000,
-            messages=[{"role": "user", "content": prompt}]
-        )
+        message = _claude_call(client, "claude-sonnet-4-20250514", 2000, [{"role": "user", "content": prompt}])
         return message.content[0].text.strip()
     except Exception as e:
         harf = skor_sonuc.harf
@@ -494,20 +512,13 @@ YAZIM KURALLARI:
   * "kredi verilmez" yerine "kredi onayı zorlaşabilir" yaz
   * Her zaman tahmini/algoritmik analiz olduğunu hissettir"""
 
-    import time
-    for attempt in range(3):
-        try:
-            client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
-            message = client.messages.create(
-                model="claude-sonnet-4-20250514",
-                max_tokens=3000,
-                messages=[{"role": "user", "content": prompt}]
-            )
-            return message.content[0].text.strip()
-        except Exception as e:
-            print(f'[potansiyel_raporu ERROR attempt {attempt+1}] {e}')
-            if attempt < 2:
-                time.sleep(3 + attempt * 2)
+    import anthropic, os
+    client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
+    try:
+        message = _claude_call(client, "claude-sonnet-4-20250514", 3000, [{"role": "user", "content": prompt}])
+        return message.content[0].text.strip()
+    except Exception as e:
+        print(f'[potansiyel_raporu ERROR] {e}')
     return ""
 
 def _nakit_akis_analiz(bs, skor_sonuc: "SkorSonuc") -> NakitAkisAnaliz:
