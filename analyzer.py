@@ -321,7 +321,7 @@ def _analiz_faiz_karsilama(d: float) -> str:
     if d >= 5.0:
         return (f"FAVÖK'ünüz faiz giderlerinizin {d:.1f} katı. "
                 "Faiz yükümlülüklerinizi rahatlıkla karşılayabiliyorsunuz. "
-                "Bankalar bu oranı görünce kredi geri ödemesi konusunda rahatlar.")
+                "Bu oran, finansal değerlendirme süreçlerinde olumlu bir gösterge olarak değerlendirilebilir.")
     if d >= 3.0:
         return (f"FAVÖK'ünüz faiz giderlerinizin {d:.1f} katı. "
                 "Faiz yükümlülüklerinizi karşılayabiliyorsunuz ve üzerinde tampon var.")

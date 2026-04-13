@@ -162,7 +162,7 @@ Aşağıdaki 5 bölümü sırayla yaz, her biri bir paragraf olsun:
 2. VARLIK YAPISI YORUMU: Kasa yüksekse "bankalar fiktif kabul eder, sermayeden mahsup edilir" gibi bankacı perspektifinden uyarılar ver. Alacaklar yüksekse tahsilat riskine dikkat çek. Stoklar şişkince "stok devir hızı yavaş, bu nakit akışını zorlar" de. Her kalem için aktife oranını kullanarak somut yorum yap.
 3. BORÇ VE ÖZKAYNAK YAPISI: Ortaklara borç yüksekse "bankalar bunu örtülü kâr dağıtımı olarak değerlendirebilir" de. Finansman giderleri yüksekse faiz yüküne dikkat çek. Sermaye yetersizse bunu vurgula.
 4. GÜÇLÜ VE ZAYIF YÖNLER: En kritik güçlü ve zayıf yönleri somut rakamlarla anlat.
-5. KREDİ POTANSİYELİ VE ÖNERİLER: Ne yapılması gerektiğini ve kredi potansiyelini özetle.
+5. BilancoSkor YAKLAŞIMI: Finansal göstergelerin genel değerlendirmesini ve olası senaryoları özetle.
 
 - Sayıları TL formatında yaz
 - Şirketiniz diye hitap et
@@ -172,6 +172,8 @@ Aşağıdaki 5 bölümü sırayla yaz, her biri bir paragraf olsun:
   * "kredi kullanabilirsiniz" veya "kredi başvurusu değerlendirilebilir" yerine "finansal göstergeler olumlu profil oluştuğuna işaret etmektedir" yaz
   * "kredi verilmez" yerine "kredi onayı zorlaşabilir" yaz
   * "bankalar sizi AA olarak görür" gibi kesin yargılar yazma, "AA bandındaki firmalar genellikle..." şeklinde yaz
+  * "AA bandındaki firmalar genellikle bankalar nezdinde olumlu değerlendirme almakta" yerine "AA bandındaki finansal profiller, finansal değerlendirme süreçlerinde olumlu olarak yorumlanabilmektedir" yaz
+  * "KREDİ POTANSİYELİ VE ÖNERİLER" başlığı yerine "BilancoSkor Yaklaşımı" başlığını kullan
   * "limit alabilirsiniz" yerine "tahmini limit potansiyeli oluşabilir" yaz
   * Hiçbir zaman kredi kararı verir gibi yazma, her zaman tahmini/algoritmik analiz olduğunu hissettir
   * "bankalar tarafından düşük risk profili olarak değerlendirilmekte" gibi banka adına kesin yargı yazma; yerine "AA bandındaki firmalar genellikle düşük risk göstergelerine sahip olmaktadır" formatını kullan
@@ -361,7 +363,7 @@ def _kredi_turu_oneri(bs, skor_sonuc: "SkorSonuc", sektor: str) -> KrediTuruOner
                 f"Duran varlıklarınız {bs.duran_varliklar:,.0f} TL. "
                 "Makine, ekipman veya yapısal yatırımlar için 12–24 ay vadeli "
                 "taksitli kredi uygundur. Sabit taksitlerle nakit akışı planlaması kolaylaşır. "
-                "Not: Mevcut yüksek faiz ortamında 36 ay ve üzeri vadeyi tercih etmeyin."
+                "Faiz ortamına bağlı olarak uzun vadeli finansman tercihleri farklı riskler barındırabilir."
             ),
         })
 
@@ -815,7 +817,7 @@ def _banka_hazirlik(skor_sonuc: "SkorSonuc", bs) -> BankaHazirlik:
         "Tüm ortakların kişisel kredi sicilinin temiz olduğunu doğrulayın",
         "Vergi ve SGK borcu varsa başvuru öncesinde kapatın",
         "Birden fazla bankaya aynı anda başvurmak kredi notunuzu olumsuz etkileyebilir",
-        "Bu raporu destekleyici belge olarak bankaya sunabilirsiniz",
+        "Rapor, kullanıcıya ait bir analiz çıktısıdır; üçüncü taraflarla paylaşımı kullanıcının sorumluluğundadır.",
     ]
 
     if "ortaklar_cari_siskinligi" in bayraklar:

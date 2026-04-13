@@ -520,7 +520,7 @@ HARF_BANTLARI = [
     (55, "BBB", "Orta",          "Teminat değeri bazlı",       "KGF kefaleti + stok/araç rehni veya kısmi ipotek"),
     (45, "BB",  "Zayıf",         "Teminat değeri bazlı",       "1. derece ipotek + kişisel kefalet"),
     (35, "B",   "Riskli",        "Teminat değeri bazlı",       "Tam ipotek + mevduat blokesi + kişisel kefalet"),
-    (0,  "D",   "Kredi verilmez","—",                          "—"),
+    (0,  "D",   "Finansman erişimi sınırlı olabilir","—",      "—"),
 ]
 
 # Bant bazında teminat araçlarının tam listesi
@@ -605,7 +605,7 @@ def _harf_notu(skor: int) -> tuple[str, str, str, str, list[str], str | None]:
                 detay.get("kgf_notu"),
             )
     detay = TEMINAT_DETAY.get("D", {})
-    return "D", "Kredi verilmez", "—", "—", [], detay.get("kgf_notu")
+    return "D", "Finansman erişimi sınırlı olabilir", "—", "—", [], detay.get("kgf_notu")
 
 
 # ─────────────────────────────────────────────
