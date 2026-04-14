@@ -188,55 +188,62 @@ class BalanceSheet:
 # Her kalem için (hesap_kodu_prefix_listesi, BalanceSheet_field_adı, işaret)
 # işaret: +1 borçlu bakiye pozitif, -1 alacaklı bakiye pozitif ekler
 ACCOUNT_MAP: list[tuple[list[str], str, int]] = [
-    # NAKİT
+    # ─── Bakiye yön kuralı ───────────────────────────────────────────────────
+    # _read_excel artık SIGNED bakiye döner: borç bakiyesi → pozitif, alacak → negatif.
+    # Bu nedenle sign değerleri şu anlama gelir:
+    #   +1 → borç-normal aktif/gider hesabı  (borç_bak pozitif = pozitif katkı)
+    #   -1 → alacak-normal pasif/gelir hesabı (alacak_bak negatif × -1 = pozitif katkı)
+    # Contra-aktif (amortisman, karşılık vb.) artık sign=+1:
+    #   alacak_bak negatif × +1 = negatif → aktifi doğal olarak düşürür.
+    # ────────────────────────────────────────────────────────────────────────
+
+    # NAKİT (Grup 10)
     (["100"], "kasa", 1),
-    (["101"], "diger_hazir_degerler", 1),   # Alınan çekler
+    (["101"], "diger_hazir_degerler", 1),   # Alınan çekler — borç normal
     (["102"], "banka", 1),
-    (["103"], "diger_hazir_degerler", -1),  # Verilen çekler (negatif)
+    (["103"], "diger_hazir_degerler", 1),   # Verilen çekler — alacak_bak negatif × +1 = eksi
     (["108"], "diger_hazir_degerler", 1),
 
-    # TİCARİ ALACAKLAR (KV)
-    (["120", "121"], "ticari_alacaklar", 1),
-    (["122", "124", "126", "127", "128",
-      "131", "132", "133", "135",
+    # TİCARİ ALACAKLAR (KV) — Grup 12
+    (["120", "121", "122", "124", "126", "127", "128"], "ticari_alacaklar", 1),
+    (["129"], "ticari_alacaklar", 1),       # Şüpheli alacak karşılığı — alacak_bak negatif
+
+    # DİĞER ALACAKLAR (KV) — Grup 13
+    (["131", "132", "133", "135",
       "136", "137", "138", "139"], "diger_alacaklar_kv", 1),
-    (["129"], "diger_alacaklar_kv", -1),   # Şüpheli alacak karşılığı (negatif)
 
-    # STOKLAR
-    (["150", "151", "152", "153", "154", "157"], "stoklar", 1),
-    (["158", "159"], "stoklar", -1),   # Stok değer düşüklüğü karşılığı (negatif)
+    # STOKLAR (Grup 15)
+    (["150", "151", "152", "153", "154", "157", "159"], "stoklar", 1),
+    (["158"], "stoklar", 1),               # Stok değer düşüklüğü karşılığı — alacak_bak negatif
 
-    # MENKUL KIYMETLER (110-119)
+    # MENKUL KIYMETLER (110-119) ve DİĞER DÖNEN VARLIKLAR
     (["110", "111", "112", "113", "114", "115", "116", "117", "118"], "diger_donen_varliklar", 1),
-    (["119"], "diger_donen_varliklar", -1),
-    # YILLARA YAYGIN INSAAT VE DİĞER DÖNEN VARLIKLAR
-    (["159", "160"], "diger_donen_varliklar", 1),
-    (["161"], "diger_donen_varliklar", -1),
+    (["119"], "diger_donen_varliklar", 1),  # Menkul kıymet değer düşüklüğü — alacak_bak negatif
+    # Yıllara yaygın inşaat ve diğer
+    (["160", "161"], "diger_donen_varliklar", 1),  # 161 alacak_bak negatif × +1 = eksi
     (["170", "171", "172", "173", "174", "175",
       "176", "177", "178", "179",
       "180", "181", "182", "183", "184", "185",
-      "190", "191", "192", "193", "195"], "diger_donen_varliklar", 1),
+      "190", "191", "192", "193", "195", "196"], "diger_donen_varliklar", 1),
 
-    # TİCARİ ALACAKLAR (UV)
+    # TİCARİ ALACAKLAR (UV) — Grup 22
     (["220", "221"], "ticari_alacaklar_uv", 1),
     (["226", "236"], "diger_alacaklar_uv", 1),
 
     # MALİ DURAN VARLIKLAR
     (["200", "201", "202", "203", "204", "205",
-      "206", "207", "208"], "mali_duran_varliklar", 1),
-    (["209"], "mali_duran_varliklar", -1),
+      "206", "207", "208", "209"], "mali_duran_varliklar", 1),  # 209 alacak_bak negatif
 
-    # MADDİ DURAN VARLIKLAR (net — birikmiş amortisman düşülmüş gelir)
+    # MADDİ DURAN VARLIKLAR (Grup 25) — net: 258=YOY pozitif, 257=amortisman negatif
     (["210", "211", "212", "213", "214", "215",
       "216", "217", "218", "219",
-      "250", "251", "252", "253", "254", "255", "256"], "maddi_duran_varliklar", 1),
-    (["257", "258"], "maddi_duran_varliklar", -1),  # Birikmiş amortismanlar
+      "250", "251", "252", "253", "254", "255", "256", "258"], "maddi_duran_varliklar", 1),
+    (["257"], "maddi_duran_varliklar", 1),  # Birikmiş amortismanlar — alacak_bak negatif × +1 = eksi
 
-    # MADDİ OLMAYAN DURAN VARLIKLAR
-    (["220", "221", "222", "223", "224", "225", "226",
-      "260", "261", "262", "263", "264", "265",
+    # MADDİ OLMAYAN DURAN VARLIKLAR (Grup 26) — sadece 26x hesapları
+    (["260", "261", "262", "263", "264", "265",
       "266", "267"], "maddi_olmayan_duv", 1),
-    (["268", "278"], "maddi_olmayan_duv", -1),  # Birikmiş itfa payları
+    (["268", "278"], "maddi_olmayan_duv", 1),  # Birikmiş itfa — alacak_bak negatif × +1 = eksi
 
     # DİĞER DURAN VARLIKLAR
     (["230", "231", "232", "233", "234", "235",
@@ -247,19 +254,19 @@ ACCOUNT_MAP: list[tuple[list[str], str, int]] = [
       "291", "292", "293", "294", "295",
       "296", "297", "298", "299"], "diger_duran_varliklar", 1),
 
-    # KV BANKA KREDİLERİ
-    (["300", "301"], "banka_kredileri_kv", 1),
-    (["302", "303"], "uzun_vadeli_borclar_kv", 1),
-    (["304", "305", "306", "307", "308", "309"], "diger_kv_borclar", 1),
+    # KV BANKA KREDİLERİ — alacak-normal → sign=-1
+    (["300", "301"], "banka_kredileri_kv", -1),
+    (["302", "303"], "uzun_vadeli_borclar_kv", -1),
+    (["304", "305", "306", "307", "308", "309"], "diger_kv_borclar", -1),
 
-    # TİCARİ BORÇLAR (KV)
-    (["310", "311"], "ticari_borclar_kv", 1),   # Satıcılar
-    (["320", "321"], "ticari_borclar_kv", 1),
+    # TİCARİ BORÇLAR (KV) — sign=-1
+    (["310", "311"], "ticari_borclar_kv", -1),
+    (["320", "321"], "ticari_borclar_kv", -1),
 
-    # ORTAKLARA BORÇLAR
-    (["323", "331", "430"], "ortaklara_borclar", 1),
+    # ORTAKLARA BORÇLAR — sign=-1
+    (["323", "331", "430"], "ortaklara_borclar", -1),
 
-    # DİĞER KV BORÇLAR (331 hariç)
+    # DİĞER KV BORÇLAR (331 hariç) — sign=-1
     (["312", "313", "314", "315", "316", "317", "318", "319",
       "322", "324", "325", "326", "327", "328", "329",
       "330", "332", "333", "334", "335", "336",
@@ -275,10 +282,10 @@ ACCOUNT_MAP: list[tuple[list[str], str, int]] = [
       "380", "381", "382", "383", "384", "385",
       "386", "387", "388", "389",
       "390", "391", "392", "393", "394", "395",
-      "396", "397", "398", "399"], "diger_kv_borclar", 1),
+      "396", "397", "398", "399"], "diger_kv_borclar", -1),
 
-    # UV BANKA KREDİLERİ
-    (["400", "401"], "banka_kredileri_uv", 1),
+    # UV BANKA KREDİLERİ — sign=-1
+    (["400", "401"], "banka_kredileri_uv", -1),
     (["402", "403", "404", "405", "406", "407",
       "408", "409",
       "410", "411", "412", "413", "414", "415",
@@ -294,35 +301,37 @@ ACCOUNT_MAP: list[tuple[list[str], str, int]] = [
       "480", "481", "482", "483", "484", "485",
       "486", "487", "488", "489",
       "490", "491", "492", "493", "494", "495",
-      "496", "497", "498", "499"], "diger_uv_borclar", 1),
+      "496", "497", "498", "499"], "diger_uv_borclar", -1),
 
-    # ÖZKAYNAKLAR
-    (["500"], "odenmis_sermaye", 1),
-    (["502", "504", "505", "510", "511", "512"], "sermaye_yedekleri", 1),
-    (["501", "503"], "sermaye_yedekleri", -1),   # Ödenmemiş sermaye ve olumsuz farklar
-    # 520-529 gecmis_yil_karlari ve donem_net_kari altında ele alındı
-    (["506", "507", "508", "509"], "kar_yedekleri", 1),
+    # ÖZKAYNAKLAR — sign=-1 (alacak-normal); borç-normal contra hesaplar da -1
+    # (borç_bak pozitif × -1 = negatif → özkaynağı azaltır)
+    (["500", "502", "504", "505", "510", "511", "512"], "odenmis_sermaye", -1),
+    (["501", "503"], "odenmis_sermaye", -1),   # Ödenmemiş sermaye / olumsuz farklar
+    (["525", "526", "527", "528", "529"], "sermaye_yedekleri", -1),
+    (["506", "507", "508", "509"], "kar_yedekleri", -1),
     (["540", "541", "542", "543", "544", "545",
-      "546", "547", "548", "549"], "kar_yedekleri", 1),
-    (["570", "520"], "gecmis_yil_karlari", 1),
-    (["521", "523"], "gecmis_yil_karlari", -1),   # Geçmiş yıl zararları
-    (["590", "522"], "donem_net_kari", 1),
+      "546", "547", "548", "549"], "kar_yedekleri", -1),
+    (["570", "520"], "gecmis_yil_karlari", -1),
+    (["521", "523"], "gecmis_yil_karlari", -1),   # Geçmiş yıl zararları — borç_bak × -1 = eksi
+    (["590", "522"], "donem_net_kari", -1),
 
     # GELİR TABLOSU
-    (["600", "601", "602"], "net_satislar", 1),
-    (["610", "611", "612"], "net_satislar", -1),   # Satış indirimleri
+    (["600", "601", "602"], "net_satislar", -1),    # alacak-normal → sign=-1
+    (["610", "611", "612"], "net_satislar", -1),    # satış indirimleri: borç_bak × -1 = eksi satış
     (["620", "621", "622", "623"], "satislarin_maliyeti", 1),
     (["630", "633"], "arge_giderleri", 1),
     (["631"], "pazarlama_giderleri", 1),
     (["632"], "genel_yonetim_giderleri", 1),
     (["640", "641", "642", "643", "644",
-      "645", "646", "647", "648", "649"], "diger_faaliyet_gelirleri", 1),
+      "645", "646", "647", "648", "649"], "diger_faaliyet_gelirleri", -1),  # alacak-normal
     (["650", "651", "652", "653", "654",
-      "655", "656", "657", "658", "659"], "diger_faaliyet_giderleri", 1),
+      "655", "656", "657", "658", "659",
+      "680", "681", "682", "683", "684", "685",
+      "686", "687", "688", "689"], "diger_faaliyet_giderleri", 1),
     (["660", "661"], "finansman_giderleri", 1),
     (["670", "671", "672", "673", "674",
-      "675", "676", "677", "678", "679"], "finansman_gelirleri", 1),
-    (["691"], "vergi_gideri", 1),  # Sadece vergi karşılığı, 692 net kar hesabı
+      "675", "676", "677", "678", "679"], "finansman_gelirleri", -1),      # alacak-normal
+    (["691"], "vergi_gideri", 1),
 ]
 
 # Hızlı lookup: hesap_kodu → (field_adı, işaret) listesi
@@ -484,9 +493,8 @@ def _read_excel(filepath):
             except (TypeError, ValueError):
                 alacak_top = 0.0
 
-        # Bakiye tespiti:
-        # Borçlu bakiye (bak_b) → pozitif gönder
-        # Alacaklı bakiye (bak_a) → negatif gönder (sign sistemi için)
+        # Bakiye tespiti: borç bakiyesi sütunu ve alacak bakiyesi sütunu ayrı ayrı okunur.
+        # Sonraki aşamada: borç_bak → pozitif, alacak_bak → negatif signed bakiye üretilir.
         if bak_b > 0 and bak_a == 0:
             borc = bak_b
             alacak = 0.0
@@ -526,16 +534,17 @@ def _read_excel(filepath):
         if code != root:
             skipped += 1
             continue
-        # Balance her zaman pozitif — sign sistemi _apply_rules'da uygulanır
+        # Signed bakiye: borç bakiyesi → pozitif, alacak bakiyesi → negatif.
+        # ACCOUNT_MAP sign sistemi bu yönü kullanır; bakiye sıfırsa atla.
         if borc > 0 and alacak == 0:
-            balance = borc
+            balance = borc          # borç bakiyesi
         elif alacak > 0 and borc == 0:
-            balance = alacak
+            balance = -alacak       # alacak bakiyesi → negatif
         elif borc > 0 and alacak > 0:
-            balance = abs(borc - alacak)
+            balance = borc - alacak  # her iki sütun doluysa net
         else:
             balance = 0
-        if balance > 0:
+        if balance != 0:
             result.append((root, balance))
 
     logger.info(
@@ -860,9 +869,22 @@ def parse_mizan(
                 f"Fix kural eşleşmesi %{match_rate*100:.0f} — AI ile tam parse yapıldı."
             )
 
-        # Bilanço dengesi kontrolü — bozuksa AI ile yeniden parse et
-        if bs.toplam_aktif > 0 and bs.toplam_pasif > 0:
-            imbalance = abs(bs.toplam_aktif - bs.toplam_pasif) / bs.toplam_aktif
+        # Bilanço dengesi kontrolü — bozuksa AI ile yeniden parse et.
+        # Açık dönem mizanda (590=0, 600>0) net kâr henüz özkaynağa eklenmemiştir;
+        # eklendikten sonraki tahmini pasifi kullanarak gerçek dengeyi hesapla.
+        _aktif = bs.toplam_aktif
+        _pasif = bs.toplam_pasif
+        if bs.donem_net_kari == 0 and bs.net_satislar != 0:
+            _tahmini_net_kar = (
+                bs.net_satislar - bs.satislarin_maliyeti
+                - bs.faaliyet_giderleri
+                + bs.diger_faaliyet_gelirleri - bs.diger_faaliyet_giderleri
+                + bs.finansman_gelirleri - bs.finansman_giderleri
+                - bs.vergi_gideri
+            )
+            _pasif += _tahmini_net_kar
+        if _aktif > 0 and _pasif > 0:
+            imbalance = abs(_aktif - _pasif) / _aktif
             if imbalance > 0.01:
                 logger.info(f"Bilanço dengesi bozuk (%{imbalance*100:.1f}) — AI ile yeniden parse ediliyor...")
                 # AI'a sadece 3 haneli ana hesapları gönder
