@@ -228,7 +228,8 @@ ACCOUNT_MAP: list[tuple[list[str], str, int]] = [
 
     # MADDİ DURAN VARLIKLAR (net — birikmiş amortisman düşülmüş gelir)
     (["210", "211", "212", "213", "214", "215",
-      "216", "217", "218", "219"], "maddi_duran_varliklar", 1),
+      "216", "217", "218", "219",
+      "250", "251", "252", "253", "254", "255", "256"], "maddi_duran_varliklar", 1),
     (["257", "258"], "maddi_duran_varliklar", -1),  # Birikmiş amortismanlar
 
     # MADDİ OLMAYAN DURAN VARLIKLAR
@@ -240,7 +241,6 @@ ACCOUNT_MAP: list[tuple[list[str], str, int]] = [
     # DİĞER DURAN VARLIKLAR
     (["230", "231", "232", "233", "234", "235",
       "240", "241", "242", "243", "244", "245", "246", "247", "248",
-      "250", "251", "252", "253", "254", "255", "256",
       "270", "271", "272", "273", "274", "275",
       "276", "277", "279",
       "280", "281", "282", "284", "285",
@@ -412,11 +412,15 @@ def _find_columns(ws) -> tuple[int | None, int | None, int | None]:
 
 
 def _is_parent_code(code, all_codes):
-    prefix = code + "."
-    for other in all_codes:
-        if other != code and other.startswith(prefix):
-            return True
-    return False
+    # Sadece tam 3 haneli ana hesapları kullan (100, 120, 300 gibi)
+    # 1-2 haneli grup kodları atlanır
+    # 4+ haneli veya noktalı detay kodları atlanır
+    clean = code.split('.')[0]
+    if len(clean) <= 2:
+        return True   # Grup kodu — atla
+    if len(clean) == 3 and '.' not in code:
+        return False  # Ana hesap — kullan
+    return True       # Detay satır — atla
 
 
 def _get_root3(code):
@@ -440,8 +444,18 @@ def _read_excel(filepath):
         if raw_code is None:
             continue
         s = str(raw_code).strip()
-        s = re.sub(r"[^0-9.]", ".", s)
-        s = re.sub(r"[.]+", ".", s).strip(".")
+        # Harf iceren kodlari atla (102.A, 102.A.01 gibi)
+        if re.search(r'[A-Za-z]', s):
+            continue
+        parts = s.split(".")
+        clean_parts = []
+        for part in parts:
+            part_clean = re.sub(r"[^0-9]", "", part)
+            if part_clean:
+                clean_parts.append(part_clean)
+            else:
+                break
+        s = ".".join(clean_parts)
         if not s:
             continue
 
@@ -470,15 +484,17 @@ def _read_excel(filepath):
             except (TypeError, ValueError):
                 alacak_top = 0.0
 
-        # Bakiye tespiti — öncelik sırası:
-        # 1. Borç bakiye kolonu doluysa → borçlu bakiye (aktif/gider hesaplar)
-        # 2. Alacak bakiye kolonu doluysa → alacaklı bakiye (pasif/gelir hesaplar)
-        # 3. Borç/alacak toplam varsa → net bakiye hesapla
-        if bak_b > 0:
+        # Bakiye tespiti:
+        # Borçlu bakiye (bak_b) → pozitif gönder
+        # Alacaklı bakiye (bak_a) → negatif gönder (sign sistemi için)
+        if bak_b > 0 and bak_a == 0:
             borc = bak_b
             alacak = 0.0
-        elif bak_a > 0:
+        elif bak_a > 0 and bak_b == 0:
             borc = 0.0
+            alacak = bak_a
+        elif bak_b > 0 and bak_a > 0:
+            borc = bak_b
             alacak = bak_a
         else:
             borc = borc_top
@@ -489,6 +505,7 @@ def _read_excel(filepath):
     if not raw_rows:
         return []
 
+    # all_codes: normalize edilmiş kodlar (parent tespiti için)
     all_codes = set(r[0] for r in raw_rows)
     has_hierarchy = any("." in code for code in all_codes)
 
@@ -500,10 +517,24 @@ def _read_excel(filepath):
         if has_hierarchy and _is_parent_code(code, all_codes):
             skipped += 1
             continue
+        # Sadece 3 haneli ana hesapları kullan
+        # Normalize sonrası aynı koda düşen detayları atla
         root = _get_root3(code)
         if not root:
             continue
-        balance = borc if borc >= alacak else alacak
+        # 3 haneli ana hesap değilse atla
+        if code != root:
+            skipped += 1
+            continue
+        # Balance her zaman pozitif — sign sistemi _apply_rules'da uygulanır
+        if borc > 0 and alacak == 0:
+            balance = borc
+        elif alacak > 0 and borc == 0:
+            balance = alacak
+        elif borc > 0 and alacak > 0:
+            balance = abs(borc - alacak)
+        else:
+            balance = 0
         if balance > 0:
             result.append((root, balance))
 
@@ -828,6 +859,28 @@ def parse_mizan(
             bs.warnings.append(
                 f"Fix kural eşleşmesi %{match_rate*100:.0f} — AI ile tam parse yapıldı."
             )
+
+        # Bilanço dengesi kontrolü — bozuksa AI ile yeniden parse et
+        if bs.toplam_aktif > 0 and bs.toplam_pasif > 0:
+            imbalance = abs(bs.toplam_aktif - bs.toplam_pasif) / bs.toplam_aktif
+            if imbalance > 0.01:
+                logger.info(f"Bilanço dengesi bozuk (%{imbalance*100:.1f}) — AI ile yeniden parse ediliyor...")
+                bs = _parse_with_ai(rows, sector)
+                bs.parse_method = "ai_reparse"
+                bs.warnings.append(
+                    f"Kural tabanlı parse bilanço dengesini sağlayamadı (%{imbalance*100:.1f} fark) — AI ile yeniden parse yapıldı."
+                )
+
+        # Bilanço dengesi kontrolü — bozuksa AI ile yeniden parse et
+        if bs.toplam_aktif > 0 and bs.toplam_pasif > 0:
+            imbalance = abs(bs.toplam_aktif - bs.toplam_pasif) / bs.toplam_aktif
+            if imbalance > 0.03:
+                logger.info(f"Bilanço dengesi bozuk (%{imbalance*100:.1f}) — AI ile yeniden parse ediliyor...")
+                bs = _parse_with_ai(rows, sector)
+                bs.parse_method = "ai_reparse"
+                bs.warnings.append(
+                    f"Kural tabanlı parse bilanço dengesini sağlayamadı (%{imbalance*100:.1f} fark) — AI ile yeniden parse yapıldı."
+                )
 
     # Aşama 2: Bilanço normalize et (denge düzeltme)
     bs = _normalize_bilanco(bs)
