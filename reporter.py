@@ -346,7 +346,7 @@ def _kredi_turu_oneri(bs, skor_sonuc: "SkorSonuc", sektor: str) -> KrediTuruOner
     )
     birincil_miktar = (
         f"Tahmini ihtiyaç: {isletme_ihtiyac:,.0f} – {isletme_ihtiyac*1.5:,.0f} TL "
-        f"(KV borçlarınızın yaklaşık %%30–50'si)"
+        f"(KV borçlarınızın yaklaşık %30–50'si)"
     )
 
     # Alacak tahsil süresine göre spot kredi önerisi
