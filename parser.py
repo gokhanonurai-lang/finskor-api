@@ -345,6 +345,14 @@ def _normalize_code(raw: str | int | float | None) -> str | None:
     return s if s else None
 
 
+def _normalize_header(val) -> str:
+    if val is None:
+        return ""
+    s = str(val).strip().lower()
+    for a, b in [("ç","c"),("ö","o"),("ü","u"),("ı","i"),("i̇","i"),("ğ","g"),("ş","s"),("â","a"),("î","i"),("û","u")]:
+        s = s.replace(a, b)
+    return s
+
 def _find_columns(ws) -> tuple[int | None, int | None, int | None]:
     """
     Hesap kodu, borç ve alacak kolonlarını otomatik tespit eder.
@@ -353,47 +361,45 @@ def _find_columns(ws) -> tuple[int | None, int | None, int | None]:
     """
     max_col = min(ws.max_column, 20)
     code_col = None
-    borc_col = None
-    alacak_col = None
+    borc_toplam_col = None
+    alacak_toplam_col = None
+    borc_bakiye_col = None
+    alacak_bakiye_col = None
     balance_col = None
 
     for row in ws.iter_rows(min_row=1, max_row=20, max_col=max_col):
         for cell in row:
-            val = str(cell.value or "").strip().lower()
-            if any(kw in val for kw in ["hesap kodu", "kod", "hs. kd", "hs.kd", "account"]):
+            val = _normalize_header(cell.value)
+            if not val:
+                continue
+            if any(kw in val for kw in ["hesap kodu", "heskodu", "kod", "hs. kd", "account"]):
                 code_col = cell.column
-            # Borç kolonu - sadece tam başlık eşleşmesi
-            # Borç kolonu tespiti
-            if val in ["borç", "borc", "borç (₺)", "borc (tl)", "borç tutarı", "debit", "borç toplam", "borc toplam"]:
-                borc_col = cell.column
-            # Borç bakiye kolonu - sadece borç toplam yoksa kullan
-            if val in ["borç bakiye", "borc bakiye", "borç bak", "borc bak"]:
-                if borc_col is None:
-                    borc_col = cell.column
-            # Alacak kolonu tespiti
-            if val in ["alacak", "alacak (₺)", "alacak (tl)", "alacak tutarı", "credit", "alacak toplam"]:
-                alacak_col = cell.column
-            # Alacak bakiye kolonu - sadece alacak toplam yoksa kullan
-            if val in ["alacak bakiye", "alacak bak"]:
-                if alacak_col is None:
-                    alacak_col = cell.column
-            # Tek bakiye kolonu
-            if any(kw in val for kw in ["net bakiye", "net tutar", "bakiye", "tutar", "balance"]):
-                if "borç" not in val and "alacak" not in val and "borc" not in val:
-                    balance_col = cell.column
+            if val in ["borc bakiyesi","borc bakiye","borc bak","borc bak.","debit balance","db bakiye"]:
+                borc_bakiye_col = cell.column
+            if val in ["alacak bakiyesi","alacak bakiye","alacak bak","alacak bak.","credit balance","cr bakiye"]:
+                alacak_bakiye_col = cell.column
+            if val in ["borc","borc (tl)","borc tutari","debit","borc toplam","borc miktari","toplam borc"]:
+                borc_toplam_col = cell.column
+            if val in ["alacak","alacak (tl)","alacak tutari","credit","alacak toplam","alacak miktari","toplam alacak"]:
+                alacak_toplam_col = cell.column
+            if val in ["bakiye","net bakiye","net tutar","balance","tutar"]:
+                balance_col = cell.column
 
     if code_col is None:
         code_col = 1
 
-    # Borç/alacak çift kolon varsa öncelik onlarda
-    if borc_col and alacak_col:
-        return code_col, borc_col, alacak_col
-
-    # Tek bakiye kolonu
+    if borc_bakiye_col and alacak_bakiye_col:
+        logger.info(f"Kolonlar: BORÇ BAKİYE={borc_bakiye_col}, ALACAK BAKİYE={alacak_bakiye_col}")
+        return code_col, borc_bakiye_col, alacak_bakiye_col
+    if borc_bakiye_col:
+        logger.info(f"Kolonlar: BORÇ BAKİYE={borc_bakiye_col}")
+        return code_col, borc_bakiye_col, None
+    if borc_toplam_col and alacak_toplam_col:
+        logger.info(f"Kolonlar: BORÇ={borc_toplam_col}, ALACAK={alacak_toplam_col}")
+        return code_col, borc_toplam_col, alacak_toplam_col
     if balance_col:
         return code_col, balance_col, None
 
-    # Fallback: son numeric kolon
     for row in ws.iter_rows(min_row=2, max_row=10, max_col=max_col):
         for cell in reversed(row):
             if isinstance(cell.value, (int, float)):
@@ -401,7 +407,7 @@ def _find_columns(ws) -> tuple[int | None, int | None, int | None]:
                 break
         if balance_col:
             break
-
+    logger.warning(f"Kolon fallback: {balance_col}")
     return code_col, balance_col, None
 
 
@@ -424,18 +430,8 @@ def _read_excel(filepath):
     if not code_col or not borc_col:
         raise ValueError("Hesap kodu veya bakiye kolonu tespit edilemedi.")
 
-    borc_bak_col = None
-    alacak_bak_col = None
-    for row in best_ws.iter_rows(min_row=1, max_row=15, max_col=min(best_ws.max_column, 20)):
-        for cell in row:
-            val = str(cell.value or "").strip().lower()
-            # Türkçe karakter varyantlarını da kontrol et
-            val_norm = val.replace("ç", "c").replace("ö", "o").replace("ü", "u").replace("ı", "i").replace("ğ", "g").replace("ş", "s")
-            if any(kw in val_norm for kw in ["borc bakiye", "borc bak", "debit bal"]):
-                borc_bak_col = cell.column
-            if any(kw in val_norm for kw in ["alacak bakiye", "alacak bak", "credit bal"]):
-                alacak_bak_col = cell.column
-
+    borc_bak_col = borc_col
+    alacak_bak_col = alacak_col
     logger.info(f"Bakiye sutunlari: borc_bak={borc_bak_col}, alacak_bak={alacak_bak_col}")
 
     raw_rows = []
