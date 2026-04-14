@@ -865,18 +865,9 @@ def parse_mizan(
             imbalance = abs(bs.toplam_aktif - bs.toplam_pasif) / bs.toplam_aktif
             if imbalance > 0.01:
                 logger.info(f"Bilanço dengesi bozuk (%{imbalance*100:.1f}) — AI ile yeniden parse ediliyor...")
-                bs = _parse_with_ai(rows, sector)
-                bs.parse_method = "ai_reparse"
-                bs.warnings.append(
-                    f"Kural tabanlı parse bilanço dengesini sağlayamadı (%{imbalance*100:.1f} fark) — AI ile yeniden parse yapıldı."
-                )
-
-        # Bilanço dengesi kontrolü — bozuksa AI ile yeniden parse et
-        if bs.toplam_aktif > 0 and bs.toplam_pasif > 0:
-            imbalance = abs(bs.toplam_aktif - bs.toplam_pasif) / bs.toplam_aktif
-            if imbalance > 0.03:
-                logger.info(f"Bilanço dengesi bozuk (%{imbalance*100:.1f}) — AI ile yeniden parse ediliyor...")
-                bs = _parse_with_ai(rows, sector)
+                # AI'a sadece 3 haneli ana hesapları gönder
+                ana_rows = [(c, b) for c, b in rows if len(c) == 3]
+                bs = _parse_with_ai(ana_rows, sector)
                 bs.parse_method = "ai_reparse"
                 bs.warnings.append(
                     f"Kural tabanlı parse bilanço dengesini sağlayamadı (%{imbalance*100:.1f} fark) — AI ile yeniden parse yapıldı."
