@@ -77,11 +77,13 @@ def _karsilastir(deger: float, ort: float, yon: str) -> tuple[str, str]:
             return "orta", f"Sektör ortalamasına yakın"
         return "kotu",     f"Sektör ortalamasının {(1-oran)*100:.0f}% altında"
     else:  # dusuk_iyi
-        oran = ort / deger if deger else 1
+        if not deger or not ort:
+            return "orta", "Sektör ortalamasına yakın"
+        oran = ort / deger
         if oran >= 1.10:
             return "iyi",  f"Sektör ortalamasından {(1-deger/ort)*100:.0f}% daha iyi"
         if oran >= 0.90:
-            return "orta", f"Sektör ortalamasına yakın"
+            return "orta", "Sektör ortalamasına yakın"
         return "kotu",     f"Sektör ortalamasının {(deger/ort-1)*100:.0f}% gerisinde"
 
 
