@@ -362,11 +362,11 @@ def _normalize_header(val) -> str:
         s = s.replace(a, b)
     return s
 
-def _find_columns(ws) -> tuple[int | None, int | None, int | None]:
+def _find_columns(ws) -> tuple[int | None, int | None, int | None, int | None, int | None]:
     """
-    Hesap kodu, borç ve alacak kolonlarını otomatik tespit eder.
-    Üç değer döner: (code_col, borc_col, alacak_col)
-    Tek bakiye kolonlu formatlarda alacak_col=None döner.
+    Hesap kodu, borç/alacak bakiye ve borç/alacak toplam kolonlarını tespit eder.
+    Beş değer döner: (code_col, borc_bak_col, alacak_bak_col, borc_top_col, alacak_top_col)
+    Tespit edilemeyen kolonlar None döner.
     """
     max_col = min(ws.max_column, 20)
     code_col = None
@@ -398,16 +398,16 @@ def _find_columns(ws) -> tuple[int | None, int | None, int | None]:
         code_col = 1
 
     if borc_bakiye_col and alacak_bakiye_col:
-        logger.info(f"Kolonlar: BORÇ BAKİYE={borc_bakiye_col}, ALACAK BAKİYE={alacak_bakiye_col}")
-        return code_col, borc_bakiye_col, alacak_bakiye_col
+        logger.info(f"Kolonlar: BORÇ BAKİYE={borc_bakiye_col}, ALACAK BAKİYE={alacak_bakiye_col}, "
+                    f"BORÇ TOP={borc_toplam_col}, ALACAK TOP={alacak_toplam_col}")
+        return code_col, borc_bakiye_col, alacak_bakiye_col, borc_toplam_col, alacak_toplam_col
     if borc_bakiye_col:
-        logger.info(f"Kolonlar: BORÇ BAKİYE={borc_bakiye_col}")
-        return code_col, borc_bakiye_col, None
+        return code_col, borc_bakiye_col, None, borc_toplam_col, alacak_toplam_col
     if borc_toplam_col and alacak_toplam_col:
         logger.info(f"Kolonlar: BORÇ={borc_toplam_col}, ALACAK={alacak_toplam_col}")
-        return code_col, borc_toplam_col, alacak_toplam_col
+        return code_col, borc_toplam_col, alacak_toplam_col, borc_toplam_col, alacak_toplam_col
     if balance_col:
-        return code_col, balance_col, None
+        return code_col, balance_col, None, None, None
 
     for row in ws.iter_rows(min_row=2, max_row=10, max_col=max_col):
         for cell in reversed(row):
@@ -417,7 +417,7 @@ def _find_columns(ws) -> tuple[int | None, int | None, int | None]:
         if balance_col:
             break
     logger.warning(f"Kolon fallback: {balance_col}")
-    return code_col, balance_col, None
+    return code_col, balance_col, None, None, None
 
 
 def _is_parent_code(code, all_codes):
@@ -436,16 +436,27 @@ def _get_root3(code):
     return code.split(".")[0][:3]
 
 
+# TDHP gelir tablosu hesaplarının doğal bakiye yönleri (yıl sonu kapanış tespiti için).
+# Alacak-normal gelir hesapları: alacak toplamı kullanılır → signed negatif
+# Borç-normal gider hesapları: borç toplamı kullanılır → signed pozitif
+_ALACAK_NORMAL_6XX = frozenset(
+    [str(x) for x in range(600, 610)] +   # Brüt satışlar
+    [str(x) for x in range(640, 650)] +   # Diğer faaliyet gelirleri
+    [str(x) for x in range(670, 680)]     # Finansman gelirleri
+)
+# 690/692 kapanış devir hesapları — zaten toplam olduklarından atlanır
+_SKIP_6XX = frozenset(["690", "692"])
+
+
 def _read_excel(filepath):
     wb = openpyxl.load_workbook(filepath, data_only=True)
     best_ws = max(wb.worksheets, key=lambda ws: ws.max_row)
-    code_col, borc_col, alacak_col = _find_columns(best_ws)
-    if not code_col or not borc_col:
+    code_col, borc_bak_col, alacak_bak_col, borc_top_col, alacak_top_col = _find_columns(best_ws)
+    if not code_col or not borc_bak_col:
         raise ValueError("Hesap kodu veya bakiye kolonu tespit edilemedi.")
 
-    borc_bak_col = borc_col
-    alacak_bak_col = alacak_col
-    logger.info(f"Bakiye sutunlari: borc_bak={borc_bak_col}, alacak_bak={alacak_bak_col}")
+    logger.info(f"Bakiye sutunlari: borc_bak={borc_bak_col}, alacak_bak={alacak_bak_col}, "
+                f"borc_top={borc_top_col}, alacak_top={alacak_top_col}")
 
     raw_rows = []
     for row in best_ws.iter_rows(min_row=2):
@@ -481,15 +492,17 @@ def _read_excel(filepath):
             except (TypeError, ValueError):
                 bak_a = 0.0
 
-        # Borç/alacak toplam kolonları
-        try:
-            borc_top = float(row[borc_col - 1].value or 0)
-        except (TypeError, ValueError):
-            borc_top = 0.0
+        # Borç/alacak toplam kolonları — bakiye kolonlarından ayrı okunur
+        borc_top = 0.0
         alacak_top = 0.0
-        if alacak_col:
+        if borc_top_col:
             try:
-                alacak_top = float(row[alacak_col - 1].value or 0)
+                borc_top = float(row[borc_top_col - 1].value or 0)
+            except (TypeError, ValueError):
+                borc_top = 0.0
+        if alacak_top_col:
+            try:
+                alacak_top = float(row[alacak_top_col - 1].value or 0)
             except (TypeError, ValueError):
                 alacak_top = 0.0
 
@@ -505,8 +518,21 @@ def _read_excel(filepath):
             borc = bak_b
             alacak = bak_a
         else:
-            borc = borc_top
-            alacak = alacak_top
+            # Bakiye sıfır — yıl sonu kapanış kontrolü (600-699 hesapları)
+            root3 = s.split(".")[0][:3]
+            if (root3.startswith("6") and len(root3) == 3
+                    and root3 not in _SKIP_6XX
+                    and borc_top > 0 and alacak_top > 0):
+                # Yıl sonu kapanışında BORÇ == ALACAK; TDHP doğal yönünden signed balance üret
+                if root3 in _ALACAK_NORMAL_6XX:
+                    borc = 0.0
+                    alacak = alacak_top   # → signed = -alacak_top (alacak-normal gelir)
+                else:
+                    borc = borc_top       # → signed = +borc_top  (borç-normal gider)
+                    alacak = 0.0
+            else:
+                borc = borc_top
+                alacak = alacak_top
 
         raw_rows.append((s, borc, alacak))
 
@@ -801,9 +827,9 @@ def _validate(bs: BalanceSheet) -> list[str]:
                 f"Pasif {bs.toplam_pasif:,.0f} ₺ (fark %{imbalance*100:.1f})"
             )
 
-    # Net satış sıfır — yıl sonu kapatılmış mizanlarda normaldir (590 hesabı kullanılır)
-    if bs.net_satislar == 0 and bs.donem_net_kari == 0:
-        warnings.append("Net satış ve dönem net kârı sıfır — gelir tablosu verileri eksik olabilir.")
+    # Net satış sıfır uyarısı
+    if bs.net_satislar == 0:
+        warnings.append("Net satış sıfır — gelir tablosu verileri eksik olabilir.")
 
     # Negatif özkaynak uyarısı
     if bs.ozkaynaklar < 0:
