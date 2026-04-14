@@ -279,16 +279,19 @@ def _analiz_roa(d: float) -> str:
             "Bilanço büyüklüğüne oranla çok az kâr üretiliyor.")
 
 def _analiz_stok_devir(d: float) -> str:
+    if not d:
+        return "Stok devir hızı hesaplanamadı — stok maliyeti veya stok bakiyesi sıfır."
+    gun = 365 / d
     if d >= 12.0:
-        return (f"Stoklarınız yılda {d:.1f} kez dönüyor — ortalama {365/d:.0f} günde bir. "
+        return (f"Stoklarınız yılda {d:.1f} kez dönüyor — ortalama {gun:.0f} günde bir. "
                 "Stok yönetiminiz çok verimli. Bağlı sermaye minimum.")
     if d >= 8.0:
-        return (f"Stoklarınız yılda {d:.1f} kez dönüyor — ortalama {365/d:.0f} günde bir. "
+        return (f"Stoklarınız yılda {d:.1f} kez dönüyor — ortalama {gun:.0f} günde bir. "
                 "Stok yönetimi makul düzeyde.")
     if d >= 4.0:
-        return (f"Stoklarınız yılda {d:.1f} kez dönüyor — ortalama {365/d:.0f} günde bir. "
+        return (f"Stoklarınız yılda {d:.1f} kez dönüyor — ortalama {gun:.0f} günde bir. "
                 "Stoklar yavaş dönüyor. Bu hem nakit döngüsünü uzatır hem de değer düşüklüğü riski taşır.")
-    return (f"Stoklarınız yılda yalnızca {d:.1f} kez dönüyor — ortalama {365/d:.0f} günde bir. "
+    return (f"Stoklarınız yılda yalnızca {d:.1f} kez dönüyor — ortalama {gun:.0f} günde bir. "
             "Stok birikimi tehlikeli boyuta ulaşmış. "
             "Bankalar bu stoku likit varlık olarak kabul etmez.")
 
