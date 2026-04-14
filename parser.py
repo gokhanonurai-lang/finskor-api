@@ -462,20 +462,31 @@ def _read_excel(filepath):
             except (TypeError, ValueError):
                 bak_a = 0.0
 
-        if bak_b > 0 or bak_a > 0:
+        # Borç/alacak toplam kolonları
+        try:
+            borc_top = float(row[borc_col - 1].value or 0)
+        except (TypeError, ValueError):
+            borc_top = 0.0
+        alacak_top = 0.0
+        if alacak_col:
+            try:
+                alacak_top = float(row[alacak_col - 1].value or 0)
+            except (TypeError, ValueError):
+                alacak_top = 0.0
+
+        # Bakiye tespiti — öncelik sırası:
+        # 1. Borç bakiye kolonu doluysa → borçlu bakiye (aktif/gider hesaplar)
+        # 2. Alacak bakiye kolonu doluysa → alacaklı bakiye (pasif/gelir hesaplar)
+        # 3. Borç/alacak toplam varsa → net bakiye hesapla
+        if bak_b > 0:
             borc = bak_b
+            alacak = 0.0
+        elif bak_a > 0:
+            borc = 0.0
             alacak = bak_a
         else:
-            try:
-                borc = float(row[borc_col - 1].value or 0)
-            except (TypeError, ValueError):
-                borc = 0.0
-            alacak = 0.0
-            if alacak_col:
-                try:
-                    alacak = float(row[alacak_col - 1].value or 0)
-                except (TypeError, ValueError):
-                    alacak = 0.0
+            borc = borc_top
+            alacak = alacak_top
 
         raw_rows.append((s, borc, alacak))
 
