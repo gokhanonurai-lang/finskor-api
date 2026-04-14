@@ -801,9 +801,9 @@ def _validate(bs: BalanceSheet) -> list[str]:
                 f"Pasif {bs.toplam_pasif:,.0f} ₺ (fark %{imbalance*100:.1f})"
             )
 
-    # Net satış sıfır uyarısı
-    if bs.net_satislar == 0:
-        warnings.append("Net satış sıfır — gelir tablosu verileri eksik olabilir.")
+    # Net satış sıfır — yıl sonu kapatılmış mizanlarda normaldir (590 hesabı kullanılır)
+    if bs.net_satislar == 0 and bs.donem_net_kari == 0:
+        warnings.append("Net satış ve dönem net kârı sıfır — gelir tablosu verileri eksik olabilir.")
 
     # Negatif özkaynak uyarısı
     if bs.ozkaynaklar < 0:

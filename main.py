@@ -47,9 +47,9 @@ VERİLER:
 - Bant: {sonuc.harf}
 
 KONTROL ET ve sadece aşağıdaki durumlarda HATA ver, aksi halde GECER yaz:
-1. Net satışlar sıfır veya negatif mi?
-2. Toplam aktif sıfır veya 100,000 TL altında mı?
-3. Aktif-pasif fark oranı %5 veya daha fazla mı? (%3.2 gibi %5 altı değerler GECER'dir)
+1. Toplam aktif sıfır veya 100,000 TL altında mı?
+2. Aktif-pasif fark oranı %5 veya daha fazla mı? (%3.2 gibi %5 altı değerler GECER'dir)
+NOT: Net satışlar sıfır olabilir — yıl sonu kapatılmış mizanlarda gelir tablosu kapalıdır, bu normaldir.
 
 Sadece GECER veya HATA: [kısa açıklama] yaz."""
 
