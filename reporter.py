@@ -525,8 +525,8 @@ def _nakit_akis_analiz(bs, skor_sonuc: "SkorSonuc") -> NakitAkisAnaliz:
     """
     Aylık FAVÖK, mevcut borç servisi ve yeni kredi taksiti karşılaştırması.
     """
-    # Aylık FAVÖK
-    aylik_favok = bs.favok / 12 if bs.favok > 0 else 0
+    # Aylık FAVÖK — negatif olsa da olduğu gibi göster
+    aylik_favok = bs.favok / 12
 
     # Mevcut borç servisi tahmini
     # Finansal borçların ortalama 36 ay vadede ödendiğini varsay
@@ -556,41 +556,41 @@ def _nakit_akis_analiz(bs, skor_sonuc: "SkorSonuc") -> NakitAkisAnaliz:
     toplam_taksit = mevcut_taksit + yeni_taksit
 
     # Kapasite değerlendirmesi
-    if aylik_favok > 0:
-        mevcut_oran = mevcut_taksit / aylik_favok
-        toplam_oran = toplam_taksit / aylik_favok
-    else:
+    if aylik_favok <= 0:
+        kapasite = "kritik"
+        yorum = "FAVÖK negatif — borç servisi karşılanamıyor."
         mevcut_oran = 0
         toplam_oran = 0
-
-    kullanim_oran = mevcut_oran  # Sadece mevcut borca bak
-    if kullanim_oran <= 0.40:
-        kapasite = "rahat"
-        yorum = (
-            f"Aylık işletme kârınızın ({aylik_favok:,.0f} TL) yalnızca "
-            f"{mevcut_oran*100:.0f}%'i borç servisine gidecek. "
-            f"Kredi geri ödemesinde rahat bir kapasiteniz var."
-        )
-    elif kullanim_oran <= 0.60:
-        kapasite = "makul"
-        yorum = (
-            f"Aylık işletme kârınızın {mevcut_oran*100:.0f}%'i borç servisine gidecek. "
-            f"Yönetilebilir bir yük ancak beklenmedik gider durumunda dikkatli olunmalı."
-        )
-    elif kullanim_oran <= 0.80:
-        kapasite = "riskli"
-        yorum = (
-            f"Aylık işletme kârınızın {mevcut_oran*100:.0f}%'i borç servisine gidecek. "
-            f"Bu yüksek bir oran. Satışlarda küçük bir düşüş ödeme güçlüğü yaratabilir. "
-            f"Bu oran, satışlarda olası dalgalanmalara karşı hassasiyet oluşturabilir."
-        )
-    else:
-        kapasite = "kritik"
-        yorum = (
-            f"Aylık işletme kârınızın {mevcut_oran*100:.0f}%'i borç servisine gidecek — "
-            f"kritik seviye. Bu krediyi geri ödemek çok güçtür. "
-            f"Daha düşük limit veya FAVÖK artışı bu göstergeyi olumlu etkileyebilir."
-        )
+    elif aylik_favok > 0:
+        mevcut_oran = mevcut_taksit / aylik_favok
+        toplam_oran = toplam_taksit / aylik_favok
+        kullanim_oran = mevcut_oran
+        if kullanim_oran <= 0.40:
+            kapasite = "rahat"
+            yorum = (
+                f"Aylık işletme kârınızın ({aylik_favok:,.0f} TL) yalnızca "
+                f"{mevcut_oran*100:.0f}%'i borç servisine gidecek. "
+                f"Kredi geri ödemesinde rahat bir kapasiteniz var."
+            )
+        elif kullanim_oran <= 0.60:
+            kapasite = "makul"
+            yorum = (
+                f"Aylık işletme kârınızın {mevcut_oran*100:.0f}%'i borç servisine gidecek. "
+                f"Yönetilebilir bir yük ancak beklenmedik gider durumunda dikkatli olunmalı."
+            )
+        elif kullanim_oran <= 0.80:
+            kapasite = "riskli"
+            yorum = (
+                f"Aylık işletme kârınızın {mevcut_oran*100:.0f}%'i borç servisine gidecek. "
+                f"Bu yüksek bir oran. Satışlarda küçük bir düşüş ödeme güçlüğü yaratabilir."
+            )
+        else:
+            kapasite = "kritik"
+            yorum = (
+                f"Aylık işletme kârınızın {mevcut_oran*100:.0f}%'i borç servisine gidecek — "
+                f"kritik seviye. Bu krediyi geri ödemek çok güçtür. "
+                f"Daha düşük limit veya FAVÖK artışı bu göstergeyi olumlu etkileyebilir."
+            )
 
     def fmt_tl(v):
         return f"{v:,.0f} TL"
