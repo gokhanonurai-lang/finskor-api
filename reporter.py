@@ -722,11 +722,15 @@ def _senaryolari_hesapla(bs, skor_sonuc: "SkorSonuc", sektor: str) -> list[Senar
                     setattr(bs2, alan, max(0, getattr(bs2, alan) + deger))
 
             yeni = skorla(bs2, sektor=sektor)
+            # Delta'yı raw toplam_puan üzerinden hesapla — kritik bayrak tavan
+            # (min 44) her iki skoru da eziyor, capped skor üzerinden hesaplarsak
+            # hep 0 çıkıyor. toplam_puan tavan uygulanmadan önceki ham rasyo toplamı.
+            raw_delta = round(yeni.toplam_puan) - round(skor_sonuc.toplam_puan)
             sonuclar.append(SenaryoSonuc(
                 aciklama=tanim["aciklama"],
                 degisiklik=delta,
                 yeni_skor=yeni.skor,
-                skor_delta=yeni.skor - baz_skor,
+                skor_delta=raw_delta,
                 yeni_harf=yeni.harf,
                 yeni_limit_aciklama=yeni.kredi_limit_aciklama,
                 etkilenen_rasyolar=tanim.get("etkilenen", []),
@@ -1150,10 +1154,6 @@ def rapor_olustur(
     """
     # Senaryolar
     senaryolar = _senaryolari_hesapla(bs, skor_sonuc, sektor)
-
-    # Skor deltalarını düzelt (baz skor eksikti)
-    for s in senaryolar:
-        s.skor_delta = s.yeni_skor - skor_sonuc.skor
 
     # Negatif delta olanları çıkar; sıfır delta olanlar (yapısal iyileştirme) dahil edilir
     senaryolar = [s for s in senaryolar if s.skor_delta >= 0]
