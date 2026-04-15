@@ -83,6 +83,7 @@ class BalanceSheet:
     parse_method: str = "rule_based"     # "rule_based" | "ai_fallback"
     match_rate: float = 0.0              # Eşleşme oranı (0–1)
     warnings: list = field(default_factory=list)
+    alt_hesaplar: dict = field(default_factory=dict)  # {parent_kod: [(raw_kod, ad, bakiye), ...]}
 
     # ─── Türetilmiş toplamlar ───────────────────
 
@@ -345,6 +346,15 @@ for prefixes, field_name, sign in ACCOUNT_MAP:
 # 3. EXCEL OKUMA
 # ─────────────────────────────────────────────
 
+# Alt hesap analizi için hedef ana hesaplar ve minimum alt kalem sayısı
+_ALT_HESAP_HEDEFLER = frozenset([
+    "120", "150", "253", "254",   # Aktif
+    "300", "301", "320", "321",   # KV Borçlar
+    "400", "401",                  # UV Borçlar
+])
+_ALT_HESAP_MIN_KALEM = 10
+
+
 def _normalize_code(raw: str | int | float | None) -> str | None:
     """Hesap kodunu temizler: '120.01', '120 01', 120 → '120'"""
     if raw is None:
@@ -449,6 +459,15 @@ _SKIP_6XX = frozenset(["690", "692"])
 
 
 def _read_excel(filepath):
+    """
+    Excel mizan dosyasını okur.
+
+    Returns:
+        (rows, alt_hesap_raw, parent_bak)
+        rows: [(3-digit-code, signed_balance), ...]  — ana parse için
+        alt_hesap_raw: {parent: [{"kod", "ad", "borc_top", "alacak_top", "bakiye"}, ...]}
+        parent_bak: {parent: signed_bakiye}  — doğruluk kontrolü için
+    """
     wb = openpyxl.load_workbook(filepath, data_only=True)
     best_ws = max(wb.worksheets, key=lambda ws: ws.max_row)
     code_col, borc_bak_col, alacak_bak_col, borc_top_col, alacak_top_col = _find_columns(best_ws)
@@ -458,15 +477,89 @@ def _read_excel(filepath):
     logger.info(f"Bakiye sutunlari: borc_bak={borc_bak_col}, alacak_bak={alacak_bak_col}, "
                 f"borc_top={borc_top_col}, alacak_top={alacak_top_col}")
 
+    # İsim kolonu — başlık satırlarında ara, bulamazsan kod+1
+    name_col = None
+    for hrow in best_ws.iter_rows(min_row=1, max_row=15):
+        for cell in hrow:
+            v = _normalize_header(cell.value)
+            if any(kw in v for kw in ["hesap adi", "hesap adı", "adi", "adı", "aciklama", "açıklama"]):
+                name_col = cell.column
+                break
+        if name_col:
+            break
+    if name_col is None:
+        name_col = code_col + 1
+
     raw_rows = []
+    _alt_raw = {p: [] for p in _ALT_HESAP_HEDEFLER}
+    _parent_bak: dict[str, float] = {}   # exact 3-digit satır bakiyesi (doğruluk için)
+
     for row in best_ws.iter_rows(min_row=2):
         raw_code = row[code_col - 1].value
         if raw_code is None:
             continue
-        s = str(raw_code).strip()
-        # Harf iceren kodlari atla (102.A, 102.A.01 gibi)
-        if re.search(r'[A-Za-z]', s):
+        s_raw = str(raw_code).strip()
+        if not s_raw:
             continue
+
+        # ── Tüm sütunları hemen oku ──
+        def _fval(col):
+            if not col:
+                return 0.0
+            try:
+                return float(row[col - 1].value or 0)
+            except (TypeError, ValueError):
+                return 0.0
+
+        bak_b    = _fval(borc_bak_col)
+        bak_a    = _fval(alacak_bak_col)
+        borc_top = _fval(borc_top_col)
+        alacak_top = _fval(alacak_top_col)
+
+        # ── Alt hesap & parent bakiye koleksiyonu (harf içeren kodlar dahil) ──
+        digits = re.sub(r"[^0-9]", "", s_raw)
+        if digits:
+            parent = digits[:3]
+            if parent in _ALT_HESAP_HEDEFLER:
+                if len(digits) >= 4:
+                    # Sub-account: en az bir toplam sütunu sıfır değilse dahil et
+                    if borc_top > 0 or alacak_top > 0:
+                        # Signed bakiye: borç bakiyeli → pozitif, alacak bakiyeli → negatif
+                        if bak_b > 0 and bak_a == 0:
+                            bakiye = bak_b
+                        elif bak_a > 0 and bak_b == 0:
+                            bakiye = -bak_a
+                        elif bak_b > 0 and bak_a > 0:
+                            bakiye = bak_b - bak_a
+                        else:
+                            bakiye = borc_top - alacak_top
+                        hesap_adi = ""
+                        try:
+                            nv = row[name_col - 1].value
+                            hesap_adi = str(nv).strip() if nv else ""
+                        except IndexError:
+                            pass
+                        _alt_raw[parent].append({
+                            "kod": s_raw,
+                            "ad": hesap_adi,
+                            "borc_top": borc_top,
+                            "alacak_top": alacak_top,
+                            "bakiye": bakiye,
+                        })
+                elif len(digits) == 3:
+                    # Exact parent row — signed bakiyeyi kaydet
+                    if bak_b > 0 and bak_a == 0:
+                        _parent_bak[parent] = bak_b
+                    elif bak_a > 0 and bak_b == 0:
+                        _parent_bak[parent] = -bak_a
+                    elif bak_b > 0 and bak_a > 0:
+                        _parent_bak[parent] = bak_b - bak_a
+
+        # ── Ana parse: harf içeren kodları atla ──
+        if re.search(r'[A-Za-z]', s_raw):
+            continue
+
+        s = s_raw
         parts = s.split(".")
         clean_parts = []
         for part in parts:
@@ -479,67 +572,30 @@ def _read_excel(filepath):
         if not s:
             continue
 
-        bak_b = 0.0
-        bak_a = 0.0
-        if borc_bak_col:
-            try:
-                bak_b = float(row[borc_bak_col - 1].value or 0)
-            except (TypeError, ValueError):
-                bak_b = 0.0
-        if alacak_bak_col:
-            try:
-                bak_a = float(row[alacak_bak_col - 1].value or 0)
-            except (TypeError, ValueError):
-                bak_a = 0.0
-
-        # Borç/alacak toplam kolonları — bakiye kolonlarından ayrı okunur
-        borc_top = 0.0
-        alacak_top = 0.0
-        if borc_top_col:
-            try:
-                borc_top = float(row[borc_top_col - 1].value or 0)
-            except (TypeError, ValueError):
-                borc_top = 0.0
-        if alacak_top_col:
-            try:
-                alacak_top = float(row[alacak_top_col - 1].value or 0)
-            except (TypeError, ValueError):
-                alacak_top = 0.0
-
-        # Bakiye tespiti: borç bakiyesi sütunu ve alacak bakiyesi sütunu ayrı ayrı okunur.
-        # Sonraki aşamada: borç_bak → pozitif, alacak_bak → negatif signed bakiye üretilir.
+        # Bakiye tespiti
         if bak_b > 0 and bak_a == 0:
-            borc = bak_b
-            alacak = 0.0
+            borc = bak_b; alacak = 0.0
         elif bak_a > 0 and bak_b == 0:
-            borc = 0.0
-            alacak = bak_a
+            borc = 0.0; alacak = bak_a
         elif bak_b > 0 and bak_a > 0:
-            borc = bak_b
-            alacak = bak_a
+            borc = bak_b; alacak = bak_a
         else:
-            # Bakiye sıfır — yıl sonu kapanış kontrolü (600-699 hesapları)
             root3 = s.split(".")[0][:3]
             if (root3.startswith("6") and len(root3) == 3
                     and root3 not in _SKIP_6XX
                     and borc_top > 0 and alacak_top > 0):
-                # Yıl sonu kapanışında BORÇ == ALACAK; TDHP doğal yönünden signed balance üret
                 if root3 in _ALACAK_NORMAL_6XX:
-                    borc = 0.0
-                    alacak = alacak_top   # → signed = -alacak_top (alacak-normal gelir)
+                    borc = 0.0; alacak = alacak_top
                 else:
-                    borc = borc_top       # → signed = +borc_top  (borç-normal gider)
-                    alacak = 0.0
+                    borc = borc_top; alacak = 0.0
             else:
-                borc = borc_top
-                alacak = alacak_top
+                borc = borc_top; alacak = alacak_top
 
         raw_rows.append((s, borc, alacak))
 
     if not raw_rows:
-        return []
+        return [], {}, {}
 
-    # all_codes: normalize edilmiş kodlar (parent tespiti için)
     all_codes = set(r[0] for r in raw_rows)
     has_hierarchy = any("." in code for code in all_codes)
 
@@ -551,23 +607,18 @@ def _read_excel(filepath):
         if has_hierarchy and _is_parent_code(code, all_codes):
             skipped += 1
             continue
-        # Sadece 3 haneli ana hesapları kullan
-        # Normalize sonrası aynı koda düşen detayları atla
         root = _get_root3(code)
         if not root:
             continue
-        # 3 haneli ana hesap değilse atla
         if code != root:
             skipped += 1
             continue
-        # Signed bakiye: borç bakiyesi → pozitif, alacak bakiyesi → negatif.
-        # ACCOUNT_MAP sign sistemi bu yönü kullanır; bakiye sıfırsa atla.
         if borc > 0 and alacak == 0:
-            balance = borc          # borç bakiyesi
+            balance = borc
         elif alacak > 0 and borc == 0:
-            balance = -alacak       # alacak bakiyesi → negatif
+            balance = -alacak
         elif borc > 0 and alacak > 0:
-            balance = borc - alacak  # her iki sütun doluysa net
+            balance = borc - alacak
         else:
             balance = 0
         if balance != 0:
@@ -577,7 +628,11 @@ def _read_excel(filepath):
         f"{'detay' if has_hierarchy else 'duz'} mizan | "
         f"ham:{len(raw_rows)} atlanan:{skipped} islenen:{len(result)}"
     )
-    return result
+
+    # Alt hesap filtresi: minimum 10 alt kalem
+    alt_hesap_filtered = {p: v for p, v in _alt_raw.items() if len(v) >= _ALT_HESAP_MIN_KALEM}
+
+    return result, alt_hesap_filtered, _parent_bak
 
 # ─────────────────────────────────────────────
 # 4. KURAL TABANLI EŞLEŞTİRME
@@ -871,8 +926,8 @@ def parse_mizan(
     """
     logger.info(f"Parser başladı: {filepath}")
 
-    # Excel oku
-    rows = _read_excel(filepath)
+    # Excel oku (rows + alt_hesap verisi tek geçişte)
+    rows, _alt_hesap_raw, _parent_bak = _read_excel(filepath)
     if not rows:
         raise ValueError("Excel dosyasında geçerli satır bulunamadı.")
     logger.info(f"{len(rows)} satır okundu.")
@@ -958,6 +1013,31 @@ def parse_mizan(
 
     for w in bs.warnings:
         logger.warning(w)
+
+    # Alt hesap verisi + doğruluk kontrolü
+    bs.alt_hesaplar = {}
+    for parent, kalemler in _alt_hesap_raw.items():
+        uyari = ""
+        if parent in _parent_bak:
+            beklenen = _parent_bak[parent]
+            alt_sum = sum(k["bakiye"] for k in kalemler)
+            if beklenen != 0:
+                sapma = abs(alt_sum - beklenen) / abs(beklenen)
+                if sapma > 0.05:
+                    uyari = (
+                        "Alt hesap toplamı ana hesapla tam örtüşmeyebilir, "
+                        "analiz tahmini niteliğindedir."
+                    )
+        bs.alt_hesaplar[parent] = {"kalemler": kalemler, "uyari": uyari}
+
+    if bs.alt_hesaplar:
+        logger.info(
+            "Alt hesap verisi: "
+            + ", ".join(
+                f"{p}({len(v['kalemler'])} kalem)"
+                for p, v in bs.alt_hesaplar.items()
+            )
+        )
 
     logger.info(f"Parse tamamlandı. Yöntem: {bs.parse_method}, "
                 f"Toplam Aktif: {bs.toplam_aktif:,.0f} ₺")

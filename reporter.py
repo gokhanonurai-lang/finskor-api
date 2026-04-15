@@ -106,6 +106,7 @@ class TamRapor:
     banka_hazirlik: BankaHazirlik
     zaman_cizelgesi: list[dict]
     skor_iyilestirme: str
+    alt_hesap_analizi: list   # list[dict] — her dict: ana_hesap_kodu, ana_hesap_adi, analiz_metni, uyari_notu
     disclaimer: str
 
 
@@ -946,7 +947,131 @@ def _zaman_cizelgesi(skor_sonuc: "SkorSonuc", senaryolar: list[SenaryoSonuc]) ->
 
 
 # ─────────────────────────────────────────────
-# 8. DISCLAIMER
+# 8. ALT HESAP ANALİZİ
+# ─────────────────────────────────────────────
+
+_ALT_HESAP_ADLARI = {
+    "120": "Alıcılar (Ticari Alacaklar)",
+    "150": "İlk Madde ve Malzeme",
+    "253": "Tesis, Makine ve Cihazlar",
+    "254": "Taşıtlar",
+    "300": "Banka Kredileri (KV)",
+    "301": "Kısa Vadeli Banka Kredileri",
+    "320": "Satıcılar",
+    "321": "Borç Senetleri",
+    "400": "Banka Kredileri (UV)",
+    "401": "Uzun Vadeli Banka Kredileri",
+}
+
+
+def _alt_hesap_analizi(bs) -> list:
+    """
+    Alt hesap verisini (borç toplamı, alacak toplamı, bakiye) bankacı bakışıyla analiz eder.
+
+    Her ana hesap için Claude Sonnet'e bakiye (kalan alacak/borç) ve hacim (işlem hacmi)
+    perspektifinden analiz yaptırır. Gözlemsel dil — kesin yargı değil.
+
+    Returns:
+        list[dict] — her dict: ana_hesap_kodu, ana_hesap_adi, analiz_metni, uyari_notu
+    """
+    import anthropic, os
+
+    alt_hesaplar = getattr(bs, "alt_hesaplar", {})
+    if not alt_hesaplar:
+        return []
+
+    client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
+    sonuclar = []
+
+    for parent, veri in alt_hesaplar.items():
+        kalemler = veri.get("kalemler", [])
+        uyari = veri.get("uyari", "")
+        if not kalemler:
+            continue
+
+        ana_ad = _ALT_HESAP_ADLARI.get(parent, f"Hesap {parent}")
+
+        # Bakiye ve hacim toplamları (abs bakiye kullanıyoruz — yön hesap tipine göre belli)
+        toplam_bakiye = sum(abs(k["bakiye"]) for k in kalemler)
+        toplam_hacim  = sum(k["borc_top"] + k["alacak_top"] for k in kalemler)
+
+        # Bakiye büyüklüğüne göre sırala (en büyük bakiyeli kalemler)
+        sirali_bakiye = sorted(kalemler, key=lambda k: abs(k["bakiye"]), reverse=True)
+        # Hacim büyüklüğüne göre sırala
+        sirali_hacim  = sorted(kalemler, key=lambda k: k["borc_top"] + k["alacak_top"], reverse=True)
+
+        en_buyuk_bakiye_10 = sirali_bakiye[:10]
+        en_buyuk_hacim_5   = sirali_hacim[:5]
+
+        top3_bakiye = sum(abs(k["bakiye"]) for k in en_buyuk_bakiye_10[:3])
+        konsantrasyon = top3_bakiye / toplam_bakiye * 100 if toplam_bakiye else 0
+
+        def fmt_kalem_bakiye(k):
+            return (
+                f"  {k['kod']} — {k['ad'][:35] if k['ad'] else '(adsız)'}: "
+                f"bakiye {k['bakiye']:+,.0f} TL  "
+                f"(borç top: {k['borc_top']:,.0f} / alacak top: {k['alacak_top']:,.0f})"
+            )
+
+        def fmt_kalem_hacim(k):
+            hacim = k["borc_top"] + k["alacak_top"]
+            return (
+                f"  {k['kod']} — {k['ad'][:35] if k['ad'] else '(adsız)'}: "
+                f"hacim {hacim:,.0f} TL  (bakiye {k['bakiye']:+,.0f} TL)"
+            )
+
+        bakiye_liste = "\n".join(fmt_kalem_bakiye(k) for k in en_buyuk_bakiye_10)
+        hacim_liste  = "\n".join(fmt_kalem_hacim(k)  for k in en_buyuk_hacim_5)
+
+        prompt = f"""BilankoSkor finansal analiz yazılımı — alt hesap analiz modülü.
+Şirketin "{ana_ad}" (Hesap {parent}) detay dökümü inceleniyor.
+
+Temel bilgiler:
+- Toplam bakiye: {toplam_bakiye:,.0f} TL  (bakiye = kalan alacak/borç tutarı)
+- Toplam hacim:  {toplam_hacim:,.0f} TL   (hacim = dönem boyunca gerçekleşen işlem tutarı)
+- Alt kalem sayısı: {len(kalemler)}
+- En büyük 3 kalemin bakiye içindeki payı: %{konsantrasyon:.0f}
+
+Bakiyeye göre en büyük 10 kalem:
+{bakiye_liste}
+
+Hacime göre en büyük 5 kalem:
+{hacim_liste}
+
+Tam olarak şu 3 başlıkla kısa analiz yaz:
+
+**Tespit:** Bakiye dağılımındaki yapıyı ve konsantrasyon durumunu betimle. Hacim ile bakiye arasında dikkat çekici bir fark varsa belirt (örn. hacim yüksek ama bakiye düşük → hızlı tahsilat; bakiye yüksek ama hacim bakiyeye yakın → stagnant alacak). 2-3 cümle.
+
+**Risk/Fırsat:** Bu yapının şirketin finansal profiline ve bankacılık değerlendirmelerine olası etkisini gözlemsel dille açıkla. "Bu dağılım konsantrasyon riski oluşturabilir", "bu yapı bankacılık değerlendirmelerinde dikkat çekebilir" gibi olasılık bildiren ifadeler kullan. "Yapmanızı öneririm" veya "tavsiye ederim" kullanma. 2 cümle.
+
+**Öneri:** Şirketin finansal profilini güçlendirebilecek potansiyel aksiyonları gözlemsel ifadeyle belirt. "Dağılımın çeşitlendirilmesi finansal profili güçlendirebilir" gibi. 1-2 cümle.
+
+Türkçe yaz. Şirketiniz diye hitap et. Özlü tut."""
+
+        try:
+            response = _claude_call(
+                client,
+                "claude-sonnet-4-20250514",
+                600,
+                [{"role": "user", "content": prompt}],
+            )
+            analiz_metni = response.content[0].text.strip()
+        except Exception as e:
+            logger.warning(f"Alt hesap analizi hatası ({parent}): {e}")
+            analiz_metni = "Analiz üretilemedi."
+
+        sonuclar.append({
+            "ana_hesap_kodu": parent,
+            "ana_hesap_adi": ana_ad,
+            "analiz_metni": analiz_metni,
+            "uyari_notu": uyari,
+        })
+
+    return sonuclar
+
+
+# ─────────────────────────────────────────────
+# 9. DISCLAIMER
 # ─────────────────────────────────────────────
 
 DISCLAIMER = """
@@ -983,7 +1108,7 @@ zararlardan sorumlu tutulamaz.
 
 
 # ─────────────────────────────────────────────
-# 9. ANA FONKSİYON
+# 10. ANA FONKSİYON
 # ─────────────────────────────────────────────
 
 def rapor_olustur(
@@ -1039,5 +1164,6 @@ def rapor_olustur(
         banka_hazirlik=_banka_hazirlik(skor_sonuc, bs),
         zaman_cizelgesi=_zaman_cizelgesi(skor_sonuc, senaryolar),
         skor_iyilestirme=_potansiyel_raporu(skor_sonuc, bs),
+        alt_hesap_analizi=_alt_hesap_analizi(bs),
         disclaimer=DISCLAIMER,
     )
