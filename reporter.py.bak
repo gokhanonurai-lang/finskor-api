@@ -11,37 +11,12 @@ Tam rapor içeriğini üretir:
 """
 
 from __future__ import annotations
-import logging
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from scorer import SkorSonuc
     from analyzer import RasyoAnaliz
-
-logger = logging.getLogger(__name__)
-
-
-# ─────────────────────────────────────────────
-# CLAUDE API RETRY WRAPPER (529 Overloaded)
-# ─────────────────────────────────────────────
-def _claude_call(client, model, max_tokens, messages_list, max_retries=6):
-    import time, anthropic
-    for attempt in range(max_retries):
-        try:
-            return client.messages.create(
-                model=model,
-                max_tokens=max_tokens,
-                messages=messages_list,
-            )
-        except anthropic.APIStatusError as e:
-            if e.status_code == 529:
-                wait = min(2 ** attempt, 60)
-                print(f"[529 overloaded] {wait}s bekleniyor (deneme {attempt+1}/{max_retries})...")
-                time.sleep(wait)
-            else:
-                raise
-    raise Exception(f"Claude API {max_retries} denemede yanıt vermedi (529 overloaded)")
 
 
 # ─────────────────────────────────────────────
@@ -109,7 +84,6 @@ class TamRapor:
     banka_hazirlik: BankaHazirlik
     zaman_cizelgesi: list[dict]
     skor_iyilestirme: str
-    alt_hesap_analizi: list   # list[dict] — her dict: ana_hesap_kodu, ana_hesap_adi, analiz_metni, uyari_notu
     disclaimer: str
 
 
@@ -208,7 +182,11 @@ Aşağıdaki 5 bölümü sırayla yaz, her biri bir paragraf olsun:
 
     try:
         client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
-        message = _claude_call(client, "claude-sonnet-4-20250514", 2000, [{"role": "user", "content": prompt}])
+        message = client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=2000,
+            messages=[{"role": "user", "content": prompt}]
+        )
         return message.content[0].text.strip()
     except Exception as e:
         harf = skor_sonuc.harf
@@ -350,7 +328,7 @@ def _kredi_turu_oneri(bs, skor_sonuc: "SkorSonuc", sektor: str) -> KrediTuruOner
     )
     birincil_miktar = (
         f"Tahmini ihtiyaç: {isletme_ihtiyac:,.0f} – {isletme_ihtiyac*1.5:,.0f} TL "
-        f"(KV borçlarınızın yaklaşık %30–50'si)"
+        f"(KV borçlarınızın yaklaşık %%30–50'si)"
     )
 
     # Alacak tahsil süresine göre spot kredi önerisi
@@ -516,21 +494,28 @@ YAZIM KURALLARI:
   * "kredi verilmez" yerine "kredi onayı zorlaşabilir" yaz
   * Her zaman tahmini/algoritmik analiz olduğunu hissettir"""
 
-    import anthropic, os
-    client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
-    try:
-        message = _claude_call(client, "claude-sonnet-4-20250514", 3000, [{"role": "user", "content": prompt}])
-        return message.content[0].text.strip()
-    except Exception as e:
-        print(f'[potansiyel_raporu ERROR] {e}')
+    import time
+    for attempt in range(3):
+        try:
+            client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
+            message = client.messages.create(
+                model="claude-sonnet-4-20250514",
+                max_tokens=3000,
+                messages=[{"role": "user", "content": prompt}]
+            )
+            return message.content[0].text.strip()
+        except Exception as e:
+            print(f'[potansiyel_raporu ERROR attempt {attempt+1}] {e}')
+            if attempt < 2:
+                time.sleep(3 + attempt * 2)
     return ""
 
 def _nakit_akis_analiz(bs, skor_sonuc: "SkorSonuc") -> NakitAkisAnaliz:
     """
     Aylık FAVÖK, mevcut borç servisi ve yeni kredi taksiti karşılaştırması.
     """
-    # Aylık FAVÖK — negatif olsa da olduğu gibi göster
-    aylik_favok = bs.favok / 12
+    # Aylık FAVÖK
+    aylik_favok = bs.favok / 12 if bs.favok > 0 else 0
 
     # Mevcut borç servisi tahmini
     # Finansal borçların ortalama 36 ay vadede ödendiğini varsay
@@ -560,41 +545,41 @@ def _nakit_akis_analiz(bs, skor_sonuc: "SkorSonuc") -> NakitAkisAnaliz:
     toplam_taksit = mevcut_taksit + yeni_taksit
 
     # Kapasite değerlendirmesi
-    if aylik_favok <= 0:
-        kapasite = "kritik"
-        yorum = "FAVÖK negatif — borç servisi karşılanamıyor."
-        mevcut_oran = 0
-        toplam_oran = 0
-    elif aylik_favok > 0:
+    if aylik_favok > 0:
         mevcut_oran = mevcut_taksit / aylik_favok
         toplam_oran = toplam_taksit / aylik_favok
-        kullanim_oran = mevcut_oran
-        if kullanim_oran <= 0.40:
-            kapasite = "rahat"
-            yorum = (
-                f"Aylık işletme kârınızın ({aylik_favok:,.0f} TL) yalnızca "
-                f"{mevcut_oran*100:.0f}%'i borç servisine gidecek. "
-                f"Kredi geri ödemesinde rahat bir kapasiteniz var."
-            )
-        elif kullanim_oran <= 0.60:
-            kapasite = "makul"
-            yorum = (
-                f"Aylık işletme kârınızın {mevcut_oran*100:.0f}%'i borç servisine gidecek. "
-                f"Yönetilebilir bir yük ancak beklenmedik gider durumunda dikkatli olunmalı."
-            )
-        elif kullanim_oran <= 0.80:
-            kapasite = "riskli"
-            yorum = (
-                f"Aylık işletme kârınızın {mevcut_oran*100:.0f}%'i borç servisine gidecek. "
-                f"Bu yüksek bir oran. Satışlarda küçük bir düşüş ödeme güçlüğü yaratabilir."
-            )
-        else:
-            kapasite = "kritik"
-            yorum = (
-                f"Aylık işletme kârınızın {mevcut_oran*100:.0f}%'i borç servisine gidecek — "
-                f"kritik seviye. Bu krediyi geri ödemek çok güçtür. "
-                f"Daha düşük limit veya FAVÖK artışı bu göstergeyi olumlu etkileyebilir."
-            )
+    else:
+        mevcut_oran = 0
+        toplam_oran = 0
+
+    kullanim_oran = mevcut_oran  # Sadece mevcut borca bak
+    if kullanim_oran <= 0.40:
+        kapasite = "rahat"
+        yorum = (
+            f"Aylık işletme kârınızın ({aylik_favok:,.0f} TL) yalnızca "
+            f"{mevcut_oran*100:.0f}%'i borç servisine gidecek. "
+            f"Kredi geri ödemesinde rahat bir kapasiteniz var."
+        )
+    elif kullanim_oran <= 0.60:
+        kapasite = "makul"
+        yorum = (
+            f"Aylık işletme kârınızın {mevcut_oran*100:.0f}%'i borç servisine gidecek. "
+            f"Yönetilebilir bir yük ancak beklenmedik gider durumunda dikkatli olunmalı."
+        )
+    elif kullanim_oran <= 0.80:
+        kapasite = "riskli"
+        yorum = (
+            f"Aylık işletme kârınızın {mevcut_oran*100:.0f}%'i borç servisine gidecek. "
+            f"Bu yüksek bir oran. Satışlarda küçük bir düşüş ödeme güçlüğü yaratabilir. "
+            f"Bu oran, satışlarda olası dalgalanmalara karşı hassasiyet oluşturabilir."
+        )
+    else:
+        kapasite = "kritik"
+        yorum = (
+            f"Aylık işletme kârınızın {mevcut_oran*100:.0f}%'i borç servisine gidecek — "
+            f"kritik seviye. Bu krediyi geri ödemek çok güçtür. "
+            f"Daha düşük limit veya FAVÖK artışı bu göstergeyi olumlu etkileyebilir."
+        )
 
     def fmt_tl(v):
         return f"{v:,.0f} TL"
@@ -950,145 +935,7 @@ def _zaman_cizelgesi(skor_sonuc: "SkorSonuc", senaryolar: list[SenaryoSonuc]) ->
 
 
 # ─────────────────────────────────────────────
-# 8. ALT HESAP ANALİZİ
-# ─────────────────────────────────────────────
-
-_ALT_HESAP_ADLARI = {
-    "120": "Alıcılar (Ticari Alacaklar)",
-    "150": "İlk Madde ve Malzeme",
-    "253": "Tesis, Makine ve Cihazlar",
-    "254": "Taşıtlar",
-    "300": "Banka Kredileri (KV)",
-    "301": "Kısa Vadeli Banka Kredileri",
-    "320": "Satıcılar",
-    "321": "Borç Senetleri",
-    "400": "Banka Kredileri (UV)",
-    "401": "Uzun Vadeli Banka Kredileri",
-}
-
-
-def _alt_hesap_analizi(bs) -> list:
-    """
-    Tüm alt hesapları tek bir Claude çağrısıyla analiz eder.
-
-    Returns:
-        list[dict] — her dict: ana_hesap_kodu, ana_hesap_adi, analiz_metni, uyari_notu
-    """
-    import anthropic, os, json as _json
-
-    alt_hesaplar = getattr(bs, "alt_hesaplar", {})
-    if not alt_hesaplar:
-        return []
-
-    # Her hesap için veriyi hazırla (meta + kalem listeleri)
-    hesap_bloklari = []
-    hesap_meta = {}   # parent → {ana_ad, uyari}
-
-    for parent, veri in alt_hesaplar.items():
-        try:
-            kalemler = veri.get("kalemler", []) if isinstance(veri, dict) else []
-            uyari    = veri.get("uyari", "")    if isinstance(veri, dict) else ""
-            if not kalemler:
-                continue
-
-            ana_ad = _ALT_HESAP_ADLARI.get(parent, f"Hesap {parent}")
-            hesap_meta[parent] = {"ana_ad": ana_ad, "uyari": uyari}
-
-            toplam_bakiye = sum(abs(k["bakiye"]) for k in kalemler)
-            toplam_hacim  = sum(k["borc_top"] + k["alacak_top"] for k in kalemler)
-
-            sirali_bak = sorted(kalemler, key=lambda k: abs(k["bakiye"]), reverse=True)
-            sirali_hac = sorted(kalemler, key=lambda k: k["borc_top"] + k["alacak_top"], reverse=True)
-
-            top3 = sum(abs(k["bakiye"]) for k in sirali_bak[:3])
-            konsantrasyon = top3 / toplam_bakiye * 100 if toplam_bakiye else 0
-
-            bak_satirlar = "\n".join(
-                f"  {k['kod']} — {k['ad'][:35] if k['ad'] else '(adsız)'}: "
-                f"bakiye {k['bakiye']:+,.0f} TL "
-                f"(borç top: {k['borc_top']:,.0f} / alacak top: {k['alacak_top']:,.0f})"
-                for k in sirali_bak[:10]
-            )
-            hac_satirlar = "\n".join(
-                f"  {k['kod']} — {k['ad'][:35] if k['ad'] else '(adsız)'}: "
-                f"hacim {k['borc_top']+k['alacak_top']:,.0f} TL (bakiye {k['bakiye']:+,.0f} TL)"
-                for k in sirali_hac[:5]
-            )
-
-            hesap_bloklari.append(
-                f"### Hesap {parent} — {ana_ad}\n"
-                f"Toplam bakiye: {toplam_bakiye:,.0f} TL | "
-                f"Toplam hacim: {toplam_hacim:,.0f} TL | "
-                f"Alt kalem: {len(kalemler)} | "
-                f"İlk 3 kalemin bakiye payı: %{konsantrasyon:.0f}\n"
-                f"Bakiyeye göre büyük 10 kalem:\n{bak_satirlar}\n"
-                f"Hacme göre büyük 5 kalem:\n{hac_satirlar}"
-            )
-        except Exception as e:
-            logger.warning(f"Alt hesap blok hazırlama hatası ({parent}): {e}")
-
-    if not hesap_bloklari:
-        return []
-
-    bloklar_str = "\n\n".join(hesap_bloklari)
-    parent_listesi = list(hesap_meta.keys())
-
-    prompt = f"""BilankoSkor finansal analiz yazılımı — alt hesap analiz modülü.
-Aşağıda birden fazla hesabın alt kalem dökümü verilmiştir.
-
-{bloklar_str}
-
----
-Her hesap için bankacı bakışıyla kısa analiz yaz.
-Gözlemsel dil kullan — "bu dağılım konsantrasyon riski oluşturabilir", "bu yapı bankacılık değerlendirmelerinde dikkat çekebilir" gibi.
-"Yapmanızı öneririm" veya "tavsiye ederim" kullanma. Şirketiniz diye hitap et.
-
-Her hesap için tam olarak şu 3 başlık:
-**Tespit:** Bakiye dağılımını ve hacim/bakiye ilişkisini betimle. 2-3 cümle.
-**Risk/Fırsat:** Bu yapının finansal profile olası etkisi. 2 cümle.
-**Öneri:** Finansal profili güçlendirebilecek potansiyel aksiyonlar. 1-2 cümle.
-
-SADECE JSON döndür. Markdown veya açıklama ekleme. Format:
-{{
-  "analizler": {{
-    "<hesap_kodu>": "<Tespit: ... Risk/Fırsat: ... Öneri: ...>",
-    ...
-  }}
-}}
-
-Hesap kodları: {parent_listesi}
-Türkçe yaz."""
-
-    try:
-        client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
-        response = _claude_call(
-            client,
-            "claude-sonnet-4-20250514",
-            2000,
-            [{"role": "user", "content": prompt}],
-        )
-        raw = response.content[0].text.strip()
-        raw = raw.replace("```json", "").replace("```", "").strip()
-        data = _json.loads(raw)
-        analizler = data.get("analizler", {})
-    except Exception as e:
-        logger.warning(f"Alt hesap Claude çağrısı başarısız: {e}")
-        analizler = {}
-
-    sonuclar = []
-    for parent, meta in hesap_meta.items():
-        sonuclar.append({
-            "ana_hesap_kodu": parent,
-            "ana_hesap_adi": meta["ana_ad"],
-            "analiz_metni": analizler.get(parent, "Analiz üretilemedi."),
-            "uyari_notu": meta["uyari"],
-        })
-
-    return sonuclar
-
-
-# ─────────────────────────────────────────────
-# 9. DISCLAIMER
+# 8. DISCLAIMER
 # ─────────────────────────────────────────────
 
 DISCLAIMER = """
@@ -1125,7 +972,7 @@ zararlardan sorumlu tutulamaz.
 
 
 # ─────────────────────────────────────────────
-# 10. ANA FONKSİYON
+# 9. ANA FONKSİYON
 # ─────────────────────────────────────────────
 
 def rapor_olustur(
@@ -1181,6 +1028,5 @@ def rapor_olustur(
         banka_hazirlik=_banka_hazirlik(skor_sonuc, bs),
         zaman_cizelgesi=_zaman_cizelgesi(skor_sonuc, senaryolar),
         skor_iyilestirme=_potansiyel_raporu(skor_sonuc, bs),
-        alt_hesap_analizi=_alt_hesap_analizi(bs),
         disclaimer=DISCLAIMER,
     )
