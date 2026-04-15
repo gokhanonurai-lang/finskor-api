@@ -519,7 +519,7 @@ YAZIM KURALLARI:
     import anthropic, os
     client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
     try:
-        message = _claude_call(client, "claude-sonnet-4-20250514", 4000, [{"role": "user", "content": prompt}])
+        message = _claude_call(client, "claude-sonnet-4-20250514", 6000, [{"role": "user", "content": prompt}])
         return message.content[0].text.strip()
     except Exception as e:
         print(f'[potansiyel_raporu ERROR] {e}')
