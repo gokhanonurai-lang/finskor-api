@@ -11,12 +11,15 @@ Tam rapor içeriğini üretir:
 """
 
 from __future__ import annotations
+import logging
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from scorer import SkorSonuc
     from analyzer import RasyoAnaliz
+
+logger = logging.getLogger(__name__)
 
 
 # ─────────────────────────────────────────────
@@ -984,46 +987,45 @@ def _alt_hesap_analizi(bs) -> list:
     sonuclar = []
 
     for parent, veri in alt_hesaplar.items():
-        kalemler = veri.get("kalemler", [])
-        uyari = veri.get("uyari", "")
-        if not kalemler:
-            continue
+        try:
+            kalemler = veri.get("kalemler", []) if isinstance(veri, dict) else []
+            uyari = veri.get("uyari", "") if isinstance(veri, dict) else ""
+            if not kalemler:
+                continue
 
-        ana_ad = _ALT_HESAP_ADLARI.get(parent, f"Hesap {parent}")
+            ana_ad = _ALT_HESAP_ADLARI.get(parent, f"Hesap {parent}")
 
-        # Bakiye ve hacim toplamları (abs bakiye kullanıyoruz — yön hesap tipine göre belli)
-        toplam_bakiye = sum(abs(k["bakiye"]) for k in kalemler)
-        toplam_hacim  = sum(k["borc_top"] + k["alacak_top"] for k in kalemler)
+            # Bakiye ve hacim toplamları
+            toplam_bakiye = sum(abs(k["bakiye"]) for k in kalemler)
+            toplam_hacim  = sum(k["borc_top"] + k["alacak_top"] for k in kalemler)
 
-        # Bakiye büyüklüğüne göre sırala (en büyük bakiyeli kalemler)
-        sirali_bakiye = sorted(kalemler, key=lambda k: abs(k["bakiye"]), reverse=True)
-        # Hacim büyüklüğüne göre sırala
-        sirali_hacim  = sorted(kalemler, key=lambda k: k["borc_top"] + k["alacak_top"], reverse=True)
+            sirali_bakiye = sorted(kalemler, key=lambda k: abs(k["bakiye"]), reverse=True)
+            sirali_hacim  = sorted(kalemler, key=lambda k: k["borc_top"] + k["alacak_top"], reverse=True)
 
-        en_buyuk_bakiye_10 = sirali_bakiye[:10]
-        en_buyuk_hacim_5   = sirali_hacim[:5]
+            en_buyuk_bakiye_10 = sirali_bakiye[:10]
+            en_buyuk_hacim_5   = sirali_hacim[:5]
 
-        top3_bakiye = sum(abs(k["bakiye"]) for k in en_buyuk_bakiye_10[:3])
-        konsantrasyon = top3_bakiye / toplam_bakiye * 100 if toplam_bakiye else 0
+            top3_bakiye = sum(abs(k["bakiye"]) for k in en_buyuk_bakiye_10[:3])
+            konsantrasyon = top3_bakiye / toplam_bakiye * 100 if toplam_bakiye else 0
 
-        def fmt_kalem_bakiye(k):
-            return (
-                f"  {k['kod']} — {k['ad'][:35] if k['ad'] else '(adsız)'}: "
-                f"bakiye {k['bakiye']:+,.0f} TL  "
-                f"(borç top: {k['borc_top']:,.0f} / alacak top: {k['alacak_top']:,.0f})"
-            )
+            def fmt_bak(k):
+                return (
+                    f"  {k['kod']} — {k['ad'][:35] if k['ad'] else '(adsız)'}: "
+                    f"bakiye {k['bakiye']:+,.0f} TL  "
+                    f"(borç top: {k['borc_top']:,.0f} / alacak top: {k['alacak_top']:,.0f})"
+                )
 
-        def fmt_kalem_hacim(k):
-            hacim = k["borc_top"] + k["alacak_top"]
-            return (
-                f"  {k['kod']} — {k['ad'][:35] if k['ad'] else '(adsız)'}: "
-                f"hacim {hacim:,.0f} TL  (bakiye {k['bakiye']:+,.0f} TL)"
-            )
+            def fmt_hac(k):
+                hacim = k["borc_top"] + k["alacak_top"]
+                return (
+                    f"  {k['kod']} — {k['ad'][:35] if k['ad'] else '(adsız)'}: "
+                    f"hacim {hacim:,.0f} TL  (bakiye {k['bakiye']:+,.0f} TL)"
+                )
 
-        bakiye_liste = "\n".join(fmt_kalem_bakiye(k) for k in en_buyuk_bakiye_10)
-        hacim_liste  = "\n".join(fmt_kalem_hacim(k)  for k in en_buyuk_hacim_5)
+            bakiye_liste = "\n".join(fmt_bak(k) for k in en_buyuk_bakiye_10)
+            hacim_liste  = "\n".join(fmt_hac(k) for k in en_buyuk_hacim_5)
 
-        prompt = f"""BilankoSkor finansal analiz yazılımı — alt hesap analiz modülü.
+            prompt = f"""BilankoSkor finansal analiz yazılımı — alt hesap analiz modülü.
 Şirketin "{ana_ad}" (Hesap {parent}) detay dökümü inceleniyor.
 
 Temel bilgiler:
@@ -1048,24 +1050,26 @@ Tam olarak şu 3 başlıkla kısa analiz yaz:
 
 Türkçe yaz. Şirketiniz diye hitap et. Özlü tut."""
 
-        try:
-            response = _claude_call(
-                client,
-                "claude-sonnet-4-20250514",
-                600,
-                [{"role": "user", "content": prompt}],
-            )
-            analiz_metni = response.content[0].text.strip()
-        except Exception as e:
-            logger.warning(f"Alt hesap analizi hatası ({parent}): {e}")
-            analiz_metni = "Analiz üretilemedi."
+            try:
+                response = _claude_call(
+                    client,
+                    "claude-sonnet-4-20250514",
+                    600,
+                    [{"role": "user", "content": prompt}],
+                )
+                analiz_metni = response.content[0].text.strip()
+            except Exception as e:
+                logger.warning(f"Alt hesap Claude hatası ({parent}): {e}")
+                analiz_metni = "Analiz üretilemedi."
 
-        sonuclar.append({
-            "ana_hesap_kodu": parent,
-            "ana_hesap_adi": ana_ad,
-            "analiz_metni": analiz_metni,
-            "uyari_notu": uyari,
-        })
+            sonuclar.append({
+                "ana_hesap_kodu": parent,
+                "ana_hesap_adi": ana_ad,
+                "analiz_metni": analiz_metni,
+                "uyari_notu": uyari,
+            })
+        except Exception as e:
+            logger.warning(f"Alt hesap döngü hatası ({parent}): {e}")
 
     return sonuclar
 
