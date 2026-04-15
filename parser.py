@@ -261,14 +261,14 @@ ACCOUNT_MAP: list[tuple[list[str], str, int]] = [
 
     # TİCARİ BORÇLAR (KV) — sign=-1
     (["310", "311"], "ticari_borclar_kv", -1),
-    (["320", "321"], "ticari_borclar_kv", -1),
+    (["320", "321", "329"], "ticari_borclar_kv", -1),
 
     # ORTAKLARA BORÇLAR — sign=-1
     (["323", "331", "430"], "ortaklara_borclar", -1),
 
     # DİĞER KV BORÇLAR (331 hariç) — sign=-1
     (["312", "313", "314", "315", "316", "317", "318", "319",
-      "322", "324", "325", "326", "327", "328", "329",
+      "322", "324", "325", "326", "327", "328",
       "330", "332", "333", "334", "335", "336",
       "337", "338", "339",
       "340", "341", "342", "343", "344", "345",
@@ -638,7 +638,7 @@ def _ai_tamamla(bs: BalanceSheet, rows: list[tuple[str, float]], sector: str) ->
     kritik_alanlar = [
         "net_satislar", "satislarin_maliyeti", "finansman_giderleri",
         "genel_yonetim_giderleri", "stoklar", "ticari_alacaklar",
-        "ticari_borclar_kv", "banka_kredileri_kv", "banka_kredileri_uv",
+        "banka_kredileri_kv", "banka_kredileri_uv",
     ]
     eksik = [f for f in kritik_alanlar if getattr(bs, f, 0) == 0]
 
