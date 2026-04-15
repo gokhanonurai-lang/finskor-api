@@ -882,11 +882,41 @@ def parse_mizan(
     logger.info(f"Fix kural eşleşmesi: %{match_rate*100:.1f}")
 
     if use_ai_fallback:
+        # Kural tabanlı parse dengesi ön kontrolü.
+        # Açık dönem mizanda (590=0, 600>0) net kâr henüz özkaynağa eklenmemiştir;
+        # tahmini pasifi kullanarak gerçek dengeyi hesapla.
+        _aktif_pre = bs.toplam_aktif
+        _pasif_pre = bs.toplam_pasif
+        if bs.donem_net_kari == 0 and bs.net_satislar != 0:
+            _tahmini_net_kar_pre = (
+                bs.net_satislar - bs.satislarin_maliyeti
+                - bs.faaliyet_giderleri
+                + bs.diger_faaliyet_gelirleri - bs.diger_faaliyet_giderleri
+                + bs.finansman_gelirleri - bs.finansman_giderleri
+                - bs.vergi_gideri
+            )
+            _pasif_pre += _tahmini_net_kar_pre
+        _pre_imbalance = (
+            abs(_aktif_pre - _pasif_pre) / _aktif_pre
+            if _aktif_pre > 0 and _pasif_pre > 0 else 1.0
+        )
+
         if match_rate >= 0.80:
-            # Yüksek eşleşme — AI sadece eksik kalemleri tamamlar
-            logger.info("Yüksek eşleşme — AI eksik kalemleri tamamlıyor...")
-            bs = _ai_tamamla(bs, rows, sector)
-            bs.parse_method = "hybrid"
+            if _pre_imbalance < 0.02:
+                # Kural tabanlı parse zaten dengeli — AI tamamlama bilanço bozabilir, atla
+                logger.info(
+                    f"Kural tabanlı parse dengeli (%{_pre_imbalance*100:.2f} fark) — "
+                    f"AI tamamlama atlandı."
+                )
+                bs.parse_method = "hybrid"
+            else:
+                # Dengede değil — AI eksik kalemleri tamamlasın
+                logger.info(
+                    f"Yüksek eşleşme ama bilanço %{_pre_imbalance*100:.1f} bozuk — "
+                    f"AI eksik kalemleri tamamlıyor..."
+                )
+                bs = _ai_tamamla(bs, rows, sector)
+                bs.parse_method = "hybrid"
         else:
             # Düşük eşleşme — AI tüm mizanı baştan parse eder
             logger.info(f"Düşük eşleşme (%{match_rate*100:.0f}) — AI tam parse yapıyor...")
@@ -895,9 +925,7 @@ def parse_mizan(
                 f"Fix kural eşleşmesi %{match_rate*100:.0f} — AI ile tam parse yapıldı."
             )
 
-        # Bilanço dengesi kontrolü — bozuksa AI ile yeniden parse et.
-        # Açık dönem mizanda (590=0, 600>0) net kâr henüz özkaynağa eklenmemiştir;
-        # eklendikten sonraki tahmini pasifi kullanarak gerçek dengeyi hesapla.
+        # Bilanço dengesi son kontrolü — AI sonrası hâlâ bozuksa yeniden parse et.
         _aktif = bs.toplam_aktif
         _pasif = bs.toplam_pasif
         if bs.donem_net_kari == 0 and bs.net_satislar != 0:
@@ -911,7 +939,7 @@ def parse_mizan(
             _pasif += _tahmini_net_kar
         if _aktif > 0 and _pasif > 0:
             imbalance = abs(_aktif - _pasif) / _aktif
-            if imbalance > 0.01:
+            if imbalance > 0.05:
                 logger.info(f"Bilanço dengesi bozuk (%{imbalance*100:.1f}) — AI ile yeniden parse ediliyor...")
                 # AI'a sadece 3 haneli ana hesapları gönder
                 ana_rows = [(c, b) for c, b in rows if len(c) == 3]
