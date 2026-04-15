@@ -732,7 +732,7 @@ def _senaryolari_hesapla(bs, skor_sonuc: "SkorSonuc", sektor: str) -> list[Senar
                 etkilenen_rasyolar=tanim.get("etkilenen", []),
             ))
         except Exception as e:
-            pass
+            logger.warning(f"Senaryo hesaplama hatası ({tanim.get('aciklama','?')}): {e}")
 
     # "Tüm aksiyonları uygula" senaryosunu sona al
     tekli = [s for s in sonuclar if "birlikte" not in s.aciklama.lower()]
@@ -1155,8 +1155,8 @@ def rapor_olustur(
     for s in senaryolar:
         s.skor_delta = s.yeni_skor - skor_sonuc.skor
 
-    # Filtrele — sadece pozitif etkileri göster
-    senaryolar = [s for s in senaryolar if s.skor_delta > 0]
+    # Negatif delta olanları çıkar; sıfır delta olanlar (yapısal iyileştirme) dahil edilir
+    senaryolar = [s for s in senaryolar if s.skor_delta >= 0]
 
     # Senaryolara TL açıklaması ekle
     for s in senaryolar:
