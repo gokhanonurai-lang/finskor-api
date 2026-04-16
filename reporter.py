@@ -958,22 +958,68 @@ def _zaman_cizelgesi(skor_sonuc: "SkorSonuc", senaryolar: list[SenaryoSonuc]) ->
 # ─────────────────────────────────────────────
 
 _ALT_HESAP_ADLARI = {
+    "100": "Kasa",
+    "102": "Bankalar",
     "120": "Alıcılar (Ticari Alacaklar)",
+    "121": "Alacak Senetleri",
+    "126": "Verilen Depozito ve Teminatlar",
     "150": "İlk Madde ve Malzeme",
+    "151": "Yarı Mamul Stoklar",
+    "152": "Mamuller",
+    "153": "Ticari Mallar",
+    "159": "Verilen Sipariş Avansları",
+    "250": "Arazi ve Arsalar",
+    "251": "Yeraltı ve Yerüstü Düzenleri",
+    "252": "Binalar",
     "253": "Tesis, Makine ve Cihazlar",
     "254": "Taşıtlar",
+    "255": "Demirbaşlar",
+    "260": "Haklar",
+    "264": "Özel Maliyetler",
+    "268": "Birikmiş Amortismanlar",
     "300": "Banka Kredileri (KV)",
-    "301": "Kısa Vadeli Banka Kredileri",
+    "301": "Finansal Kiralama Yükümlülükleri (KV)",
     "320": "Satıcılar",
     "321": "Borç Senetleri",
+    "329": "Diğer Ticari Borçlar (KV)",
+    "331": "Ortaklara Borçlar",
+    "340": "Alınan Sipariş Avansları",
+    "360": "Ödenecek Vergi ve Fonlar",
     "400": "Banka Kredileri (UV)",
-    "401": "Uzun Vadeli Banka Kredileri",
+    "401": "Finansal Kiralama Yükümlülükleri (UV)",
 }
+
+# Fix liste: her zaman dahil, kalem sayısına bakılmaksızın
+_FIX_LISTE = frozenset([
+    "120", "150", "253", "254",
+    "300", "301", "320", "321",
+    "400", "401",
+])
+
+# Dinamik eklemeden kesinlikle hariç tutulacak hesaplar
+_DINAMIK_HARIC = frozenset(["257", "268"])
+
+
+def _hesap_tipi(parent: str) -> str:
+    """Hesap koduna göre tip döndür: aktif | pasif | duran_varlik"""
+    if parent in ("253", "254", "255", "264"):
+        return "duran_varlik"
+    if parent.startswith("1"):
+        return "aktif"
+    if parent.startswith("2"):
+        return "duran_varlik"
+    if parent.startswith("3") or parent.startswith("4"):
+        return "pasif"
+    return "aktif"
 
 
 def _alt_hesap_analizi(bs) -> list:
     """
-    Tüm alt hesapları tek bir Claude çağrısıyla analiz eder.
+    Hibrit hesap seçimiyle tüm alt hesapları tek Claude çağrısıyla analiz eder.
+
+    Seçim kuralları:
+      - Fix liste (120,150,253,254,300,301,320,321,400,401): kalem sayısına bakılmaksızın dahil
+      - Dinamik ekleme: fix listede olmayan, >20 kalem, bakiye >2M TL, 257/268 dışı
 
     Returns:
         list[dict] — her dict: ana_hesap_kodu, ana_hesap_adi, analiz_metni, uyari_notu
@@ -984,49 +1030,86 @@ def _alt_hesap_analizi(bs) -> list:
     if not alt_hesaplar:
         return []
 
-    # Her hesap için veriyi hazırla (meta + kalem listeleri)
-    hesap_bloklari = []
-    hesap_meta = {}   # parent → {ana_ad, uyari}
-
+    # ── 1. Hibrit hesap seçimi ───────────────────────────────────────────
+    secilen: list[str] = []
     for parent, veri in alt_hesaplar.items():
+        kalemler = veri.get("kalemler", []) if isinstance(veri, dict) else []
+        if not kalemler:
+            continue
+        if parent in _FIX_LISTE:
+            secilen.append(parent)
+        elif parent not in _DINAMIK_HARIC:
+            # Bakiyeyi alt kalemlerden hesapla
+            bakiye_toplam = abs(sum(k["bakiye"] for k in kalemler))
+            if len(kalemler) > 20 and bakiye_toplam > 2_000_000:
+                secilen.append(parent)
+
+    if not secilen:
+        return []
+
+    # ── 2. Her hesap için blok ve meta hazırla ───────────────────────────
+    hesap_bloklari = []
+    hesap_meta = {}   # parent → {ana_ad, uyari, tip}
+
+    for parent in secilen:
         try:
+            veri     = alt_hesaplar[parent]
             kalemler = veri.get("kalemler", []) if isinstance(veri, dict) else []
             uyari    = veri.get("uyari", "")    if isinstance(veri, dict) else ""
             if not kalemler:
                 continue
 
             ana_ad = _ALT_HESAP_ADLARI.get(parent, f"Hesap {parent}")
-            hesap_meta[parent] = {"ana_ad": ana_ad, "uyari": uyari}
+            tip    = _hesap_tipi(parent)
+            hesap_meta[parent] = {"ana_ad": ana_ad, "uyari": uyari, "tip": tip}
 
-            toplam_bakiye = sum(abs(k["bakiye"]) for k in kalemler)
-            toplam_hacim  = sum(k["borc_top"] + k["alacak_top"] for k in kalemler)
+            # ── Hesap tipine göre hacim & bakiye kolonları ──
+            if tip == "aktif":
+                # Hacim = BORÇ kolonu; bakiye = BORÇ BAKİYESİ (pozitif)
+                toplam_hacim  = sum(k["borc_top"] for k in kalemler)
+                toplam_bakiye = sum(k["bakiye"] for k in kalemler if k["bakiye"] > 0)
+                sirali = sorted(kalemler, key=lambda k: k["bakiye"], reverse=True)
+                hacim_label = "Borç hacmi"
+                bakiye_label = "Borç bakiyesi (tahsil edilmemiş alacak)"
+                buyuk_label  = "en büyük bakiyeli müşteri"
+            elif tip == "pasif":
+                # Hacim = ALACAK kolonu; bakiye = ALACAK BAKİYESİ (abs)
+                toplam_hacim  = sum(k["alacak_top"] for k in kalemler)
+                toplam_bakiye = sum(abs(k["bakiye"]) for k in kalemler if k["bakiye"] < 0)
+                sirali = sorted(kalemler, key=lambda k: abs(k["bakiye"]), reverse=True)
+                hacim_label = "Alacak hacmi"
+                bakiye_label = "Alacak bakiyesi (ödenmemiş borç)"
+                buyuk_label  = "en büyük bakiyeli tedarikçi/banka"
+            else:  # duran_varlik
+                # Hacim yok; bakiye = BORÇ BAKİYESİ (net defter değeri)
+                toplam_hacim  = 0.0
+                toplam_bakiye = sum(k["bakiye"] for k in kalemler if k["bakiye"] > 0)
+                sirali = sorted(kalemler, key=lambda k: k["bakiye"], reverse=True)
+                hacim_label = None
+                bakiye_label = "Net defter değeri"
+                buyuk_label  = "en yüksek defter değerli kalem"
 
-            sirali_bak = sorted(kalemler, key=lambda k: abs(k["bakiye"]), reverse=True)
-            sirali_hac = sorted(kalemler, key=lambda k: k["borc_top"] + k["alacak_top"], reverse=True)
-
-            top3 = sum(abs(k["bakiye"]) for k in sirali_bak[:3])
+            top3 = sum(abs(k["bakiye"]) for k in sirali[:3])
             konsantrasyon = top3 / toplam_bakiye * 100 if toplam_bakiye else 0
 
             bak_satirlar = "\n".join(
                 f"  {k['kod']} — {k['ad'][:35] if k['ad'] else '(adsız)'}: "
-                f"bakiye {k['bakiye']:+,.0f} TL "
-                f"(borç top: {k['borc_top']:,.0f} / alacak top: {k['alacak_top']:,.0f})"
-                for k in sirali_bak[:10]
+                f"bakiye {k['bakiye']:+,.0f} TL"
+                + (f" ({bakiye_label}: {abs(k['bakiye']):,.0f} TL)" if tip != "duran_varlik" else "")
+                for k in sirali[:10]
             )
-            hac_satirlar = "\n".join(
-                f"  {k['kod']} — {k['ad'][:35] if k['ad'] else '(adsız)'}: "
-                f"hacim {k['borc_top']+k['alacak_top']:,.0f} TL (bakiye {k['bakiye']:+,.0f} TL)"
-                for k in sirali_hac[:5]
+
+            baslik_satirlari = (
+                f"Toplam bakiye: {toplam_bakiye:,.0f} TL | "
+                + (f"{hacim_label}: {toplam_hacim:,.0f} TL | " if toplam_hacim else "")
+                + f"Alt kalem: {len(kalemler)} | "
+                f"İlk 3 kalemin bakiye payı: %{konsantrasyon:.0f}"
             )
 
             hesap_bloklari.append(
-                f"### Hesap {parent} — {ana_ad}\n"
-                f"Toplam bakiye: {toplam_bakiye:,.0f} TL | "
-                f"Toplam hacim: {toplam_hacim:,.0f} TL | "
-                f"Alt kalem: {len(kalemler)} | "
-                f"İlk 3 kalemin bakiye payı: %{konsantrasyon:.0f}\n"
-                f"Bakiyeye göre büyük 10 kalem:\n{bak_satirlar}\n"
-                f"Hacme göre büyük 5 kalem:\n{hac_satirlar}"
+                f"### Hesap {parent} — {ana_ad} [tip: {tip}]\n"
+                f"{baslik_satirlari}\n"
+                f"Büyükten küçüğe ilk 10 kalem ({buyuk_label} önce):\n{bak_satirlar}"
             )
         except Exception as e:
             logger.warning(f"Alt hesap blok hazırlama hatası ({parent}): {e}")
@@ -1038,24 +1121,29 @@ def _alt_hesap_analizi(bs) -> list:
     parent_listesi = list(hesap_meta.keys())
 
     prompt = f"""BilankoSkor finansal analiz yazılımı — alt hesap analiz modülü.
-Aşağıda birden fazla hesabın alt kalem dökümü verilmiştir.
+Aşağıda hesap tipine göre hazırlanmış alt kalem dökümleri var.
 
 {bloklar_str}
 
 ---
 Her hesap için bankacı bakışıyla kısa analiz yaz.
 Gözlemsel dil kullan — "bu dağılım konsantrasyon riski oluşturabilir", "bu yapı bankacılık değerlendirmelerinde dikkat çekebilir" gibi.
-"Yapmanızı öneririm" veya "tavsiye ederim" kullanma. Şirketiniz diye hitap et.
+"Yapmanızı öneririm" veya "tavsiye ederim" kullanma. "Şirketiniz" diye hitap et.
+
+Hesap tipine göre doğru terminoloji kullan:
+- aktif hesaplar (1xx): "en büyük bakiyeli müşteri", "tahsil edilmemiş alacak"
+- pasif hesaplar (3xx/4xx): "en büyük bakiyeli tedarikçi/banka", "ödenmemiş borç"
+- duran varlık hesapları (2xx): "en yüksek defter değerli kalem"
 
 Her hesap için tam olarak şu 3 başlık:
-**Tespit:** Bakiye dağılımını ve hacim/bakiye ilişkisini betimle. 2-3 cümle.
+**Tespit:** Bakiye dağılımını ve (varsa) hacim/bakiye ilişkisini betimle. 2-3 cümle.
 **Risk/Fırsat:** Bu yapının finansal profile olası etkisi. 2 cümle.
 **Öneri:** Finansal profili güçlendirebilecek potansiyel aksiyonlar. 1-2 cümle.
 
 SADECE JSON döndür. Markdown veya açıklama ekleme. Format:
 {{
   "analizler": {{
-    "<hesap_kodu>": "<Tespit: ... Risk/Fırsat: ... Öneri: ...>",
+    "<hesap_kodu>": "<**Tespit:** ... **Risk/Fırsat:** ... **Öneri:** ...>",
     ...
   }}
 }}

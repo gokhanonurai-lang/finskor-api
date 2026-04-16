@@ -491,7 +491,7 @@ def _read_excel(filepath):
         name_col = code_col + 1
 
     raw_rows = []
-    _alt_raw = {p: [] for p in _ALT_HESAP_HEDEFLER}
+    _alt_raw: dict[str, list] = {}       # tüm 3 haneli analar — reporter filtreler
     _parent_bak: dict[str, float] = {}   # exact 3-digit satır bakiyesi (doğruluk için)
 
     for row in best_ws.iter_rows(min_row=2):
@@ -520,7 +520,7 @@ def _read_excel(filepath):
         digits = re.sub(r"[^0-9]", "", s_raw)
         if digits:
             parent = digits[:3]
-            if parent in _ALT_HESAP_HEDEFLER:
+            if True:  # tüm 3 haneli anaları topla; reporter hibrit filtre uygular
                 if len(digits) >= 4:
                     # Sub-account: en az bir toplam sütunu sıfır değilse dahil et
                     if borc_top > 0 or alacak_top > 0:
@@ -539,6 +539,8 @@ def _read_excel(filepath):
                             hesap_adi = str(nv).strip() if nv else ""
                         except IndexError:
                             pass
+                        if parent not in _alt_raw:
+                            _alt_raw[parent] = []
                         _alt_raw[parent].append({
                             "kod": s_raw,
                             "ad": hesap_adi,
@@ -629,8 +631,8 @@ def _read_excel(filepath):
         f"ham:{len(raw_rows)} atlanan:{skipped} islenen:{len(result)}"
     )
 
-    # Alt hesap filtresi: minimum 10 alt kalem
-    alt_hesap_filtered = {p: v for p, v in _alt_raw.items() if len(v) >= _ALT_HESAP_MIN_KALEM}
+    # Alt hesap filtresi: en az 1 anlamlı alt kalem (reporter hibrit eşiği uygular)
+    alt_hesap_filtered = {p: v for p, v in _alt_raw.items() if len(v) >= 1}
 
     return result, alt_hesap_filtered, _parent_bak
 
