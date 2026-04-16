@@ -1122,14 +1122,116 @@ def _alt_hesap_analizi(bs) -> list:
     """
     Hibrit hesap seçimiyle alt hesapları her biri için ayrı Claude çağrısıyla analiz eder.
 
-    Seçim kuralları:
-      - Fix liste (120,150,253,254,300,301,320,321,400,401): kalem sayısına bakılmaksızın dahil
-      - Dinamik ekleme: fix listede olmayan, >20 kalem, bakiye >2M TL, 257/268 dışı
-
-    Returns:
-        list[dict] — her dict: ana_hesap_kodu, ana_hesap_adi, analiz_metni, uyari_notu
+    Bakiye/hacim kuralları:
+      - Pasif (300/301/320/321/329/340/400/401): bakiye = alacak bakiyesi, hacim = alacak_top
+      - Aktif hacimli (120/150/159): bakiye = borç bakiyesi, hacim = borc_top
+      - Aktif hacimsiz (180/280/253/254/255/264): bakiye = borç bakiyesi, hacim gönderilmez
+      - Bakiyesi sıfır olan hesaplar atlanır
     """
     import anthropic, os, json as _json
+
+    _AKTIF_HACIMLI  = frozenset(["120", "150", "159"])
+    _AKTIF_HACIMSIZ = frozenset(["180", "280", "253", "254", "255", "264"])
+    _PASIF_HESAPLAR = frozenset(["300", "301", "320", "321", "329", "340", "400", "401"])
+
+    _HESAP_DIREKTIF: dict[str, str] = {
+        "120": (
+            "Bu AKTİF hesaptır. Bakiye = şirketin müşterilerden tahsil edeceği alacak. "
+            "Hacim = müşteriyle yapılan ciro.\n"
+            "Analiz direktifi: Kaç müşteri var, büyük müşterileri ismiyle say ve cirolarını "
+            "ve tahsil edilmemiş bakiyelerini yaz. Konsantrasyon varsa bu müşteriler ödeme "
+            "yapamazsa nakit akışına etkisini değerlendir. Bakiyesi sıfır (tamamen tahsil "
+            "edilmiş) ile bakiyesi yüksek müşterileri karşılaştır."
+        ),
+        "150": (
+            "Bu AKTİF STOK hesabıdır. Bakiye = eldeki hammadde/malzeme stoku. "
+            "Alacak değil, fiziksel stok.\n"
+            "Analiz direktifi: Stok yapısını değerlendir, tek kalemde yoğunlaşma var mı, "
+            "stok devir hızı ve likidite açısından bankacılık perspektifinden yorumla."
+        ),
+        "159": (
+            "Bu AKTİF hesaptır. Bakiye = tedarikçilere verilmiş ama henüz mal/hizmet "
+            "alınmamış avanslar.\n"
+            "Analiz direktifi: Büyük avansları ismiyle say, bu avansların karşılığında mal "
+            "geldi mi gelmedi mi perspektifinden değerlendir, avans riski ve tedarikçi "
+            "güvenilirliği açısından yorumla."
+        ),
+        "180": (
+            "Bu AKTİF hesaptır. Bakiye = ileriki aylara ait peşin ödenmiş giderler "
+            "(sigorta, kira, abonelik vb.). Borç veya alacak değil.\n"
+            "Analiz direktifi: Büyük kalemleri ismiyle say, peşin ödenen gider yapısını "
+            "ve nakit yönetimi açısından değerlendir."
+        ),
+        "280": (
+            "Bu AKTİF hesaptır. Bakiye = gelecek yıllara ait peşin ödenmiş giderler.\n"
+            "Analiz direktifi: Büyük kalemleri ismiyle say, uzun vadeli peşin ödeme "
+            "yapısını ve finansal planlamaya etkisini değerlendir."
+        ),
+        "253": (
+            "Bu DURAN VARLIK hesabıdır. Bakiye = makinelerin net defter değeri.\n"
+            "Analiz direktifi: En yüksek değerli makineleri ismiyle say, yaş dağılımını "
+            "değerlendir, teminat kapasitesi ve teknolojik eskime riski açısından "
+            "bankacılık perspektifinden yorumla."
+        ),
+        "254": (
+            "Bu DURAN VARLIK hesabıdır. Bakiye = araçların net defter değeri.\n"
+            "Analiz direktifi: En değerli araçları ismiyle say, filo yapısını değerlendir, "
+            "teminat kapasitesi ve piyasa değeri açısından bankacılık perspektifinden yorumla."
+        ),
+        "255": (
+            "Bu DURAN VARLIK hesabıdır. Bakiye = demirbaşların net defter değeri.\n"
+            "Analiz direktifi: Yaş dağılımını ve değer yapısını değerlendir, teminat "
+            "açısından düşük değerli olduğunu bankacılık perspektifinden yorumla."
+        ),
+        "264": (
+            "Bu DURAN VARLIK hesabıdır. Bakiye = özelleştirilmiş yatırım maliyetleri.\n"
+            "Analiz direktifi: Büyük kalemleri ismiyle say, bu maliyetlerin ne olduğunu "
+            "ve geri kazanılabilirlik/teminat değeri açısından yorumla."
+        ),
+        "300": (
+            "Bu PASİF hesaptır. Bakiye = şirketin kısa vadeli banka borcu. "
+            "Hacim = o bankadan çekilen toplam kredi.\n"
+            "Analiz direktifi: Her bankaya olan borcu ve hacmi ayrı ayrı değerlendir, "
+            "hangi bankaya ne kadar bağımlı, vade yapısı kısa vadeli risk açısından "
+            "bankacılık perspektifinden yorumla."
+        ),
+        "301": (
+            "Bu PASİF hesaptır. Bakiye = kısa vadeli leasing yükümlülüğü.\n"
+            "Analiz direktifi: Kiralama yapısını ve ödeme planını değerlendir."
+        ),
+        "320": (
+            "Bu PASİF hesaptır. Bakiye = şirketin yurt içi tedarikçilere olan borcu. "
+            "Hacim = o tedarikçiden yapılan alım.\n"
+            "Analiz direktifi: Büyük tedarikçileri ismiyle say, bu tedarikçilere bağımlılık "
+            "riski, alternatif tedarikçi var mı, ödeme gecikirse ne olur perspektifinden yorumla."
+        ),
+        "321": (
+            "Bu PASİF hesaptır. Bakiye = şirketin yabancı tedarikçilere olan dövizli borcu. "
+            "Hacim = o tedarikçiden yapılan alım.\n"
+            "Analiz direktifi: Büyük tedarikçileri ismiyle say, kur riski ve döviz borç "
+            "yapısı açısından bankacılık perspektifinden yorumla."
+        ),
+        "329": (
+            "Bu PASİF hesaptır. Bakiye = şirketin diğer ticari borçları; şirket bu kişilere BORÇLU.\n"
+            "Analiz direktifi: Büyük borçları ismiyle say, bu borçların yapısını "
+            "(petrol, elektrik, hizmet vb.) ve konsantrasyon riskini değerlendir."
+        ),
+        "340": (
+            "Bu PASİF hesaptır. Bakiye = müşterilerden alınan ama henüz teslim edilmemiş "
+            "iş/mal karşılığı avanslar. Şirketin bu müşterilere BORCU var (mal/hizmet vermek zorunda).\n"
+            "Analiz direktifi: Büyük avansları ismiyle say, bu taahhütlerin yerine "
+            "getirilememesi riskini ve nakit akışına etkisini değerlendir."
+        ),
+        "400": (
+            "Bu PASİF hesaptır. Bakiye = şirketin uzun vadeli banka borcu.\n"
+            "Analiz direktifi: Her bankaya olan borcu değerlendir, KV ile UV arasındaki "
+            "denge ve uzun vadeli borç yönetimi açısından yorumla."
+        ),
+        "401": (
+            "Bu PASİF hesaptır. Bakiye = uzun vadeli leasing yükümlülüğü.\n"
+            "Analiz direktifi: Kiralama yapısını ve uzun vadeli ödeme planını değerlendir."
+        ),
+    }
 
     alt_hesaplar = getattr(bs, "alt_hesaplar", {})
     if not alt_hesaplar:
@@ -1152,7 +1254,7 @@ def _alt_hesap_analizi(bs) -> list:
         return []
 
     # ── 2. Her hesap için meta ve blok hazırla ───────────────────────────
-    hesap_meta = {}  # parent → {ana_ad, uyari, tip, blok}
+    hesap_meta: dict = {}
 
     for parent in secilen:
         try:
@@ -1162,59 +1264,100 @@ def _alt_hesap_analizi(bs) -> list:
             if not kalemler:
                 continue
 
-            ana_ad = _ALT_HESAP_ADLARI.get(parent, f"Hesap {parent}")
-            tip    = _hesap_tipi(parent)
+            ana_ad   = _ALT_HESAP_ADLARI.get(parent, f"Hesap {parent}")
+            direktif = _HESAP_DIREKTIF.get(
+                parent,
+                f"Bu hesabı bankacılık perspektifinden analiz et. "
+                f"Bakiye dağılımını ve konsantrasyon riskini değerlendir."
+            )
 
-            # ── Hesap tipine göre hacim & bakiye kolonları ──
-            if tip == "aktif":
+            # ── Hesap grubuna göre bakiye & hacim & sıralama ──
+            if parent in _AKTIF_HACIMLI:
+                sirali        = sorted(kalemler, key=lambda k: k["bakiye"], reverse=True)
+                toplam_bakiye = sum(k["bakiye"] for k in kalemler if k["bakiye"] > 0)
                 toplam_hacim  = sum(k["borc_top"] for k in kalemler)
-                toplam_bakiye = sum(k["bakiye"] for k in kalemler if k["bakiye"] > 0)
-                sirali = sorted(kalemler, key=lambda k: k["bakiye"], reverse=True)
-                hacim_label  = "Borç hacmi"
-                bakiye_label = "Borç bakiyesi (tahsil edilmemiş alacak)"
-                buyuk_label  = "en büyük bakiyeli müşteri"
-                tip_aciklama = "aktif hesap (1xx) — 'en büyük bakiyeli müşteri', 'tahsil edilmemiş alacak' terminolojisi kullan"
-            elif tip == "pasif":
-                toplam_hacim  = sum(k["alacak_top"] for k in kalemler)
-                toplam_bakiye = sum(abs(k["bakiye"]) for k in kalemler if k["bakiye"] < 0)
-                sirali = sorted(kalemler, key=lambda k: abs(k["bakiye"]), reverse=True)
-                hacim_label  = "Alacak hacmi"
-                bakiye_label = "Alacak bakiyesi (ödenmemiş borç)"
-                buyuk_label  = "en büyük bakiyeli tedarikçi/banka"
-                tip_aciklama = "pasif hesap (3xx/4xx) — 'en büyük bakiyeli tedarikçi/banka', 'ödenmemiş borç' terminolojisi kullan"
-            else:  # duran_varlik
-                toplam_hacim  = 0.0
-                toplam_bakiye = sum(k["bakiye"] for k in kalemler if k["bakiye"] > 0)
-                sirali = sorted(kalemler, key=lambda k: k["bakiye"], reverse=True)
-                hacim_label  = None
-                bakiye_label = "Net defter değeri"
-                buyuk_label  = "en yüksek defter değerli kalem"
-                tip_aciklama = "duran varlık hesabı (2xx) — 'en yüksek defter değerli kalem' terminolojisi kullan"
+                hacim_satir   = f"Borç (ciro) hacmi: {toplam_hacim:,.0f} TL | "
+                def _fmt_aktif_hacimli(k):
+                    return (
+                        f"  {k['kod']} — {k['ad'][:40] if k['ad'] else '(adsız)'}: "
+                        f"bakiye {k['bakiye']:,.0f} TL | hacim {k['borc_top']:,.0f} TL"
+                    )
+                kalem_satirlari = "\n".join(_fmt_aktif_hacimli(k) for k in sirali[:10])
 
-            top3 = sum(abs(k["bakiye"]) for k in sirali[:3])
+            elif parent in _AKTIF_HACIMSIZ:
+                sirali        = sorted(kalemler, key=lambda k: k["bakiye"], reverse=True)
+                toplam_bakiye = sum(k["bakiye"] for k in kalemler if k["bakiye"] > 0)
+                toplam_hacim  = 0.0
+                hacim_satir   = ""
+                def _fmt_aktif_hacimsiz(k):
+                    return (
+                        f"  {k['kod']} — {k['ad'][:40] if k['ad'] else '(adsız)'}: "
+                        f"bakiye {k['bakiye']:,.0f} TL"
+                    )
+                kalem_satirlari = "\n".join(_fmt_aktif_hacimsiz(k) for k in sirali[:10])
+
+            elif parent in _PASIF_HESAPLAR:
+                sirali        = sorted(kalemler, key=lambda k: abs(k["bakiye"]), reverse=True)
+                toplam_bakiye = sum(abs(k["bakiye"]) for k in kalemler if k["bakiye"] < 0)
+                toplam_hacim  = sum(k["alacak_top"] for k in kalemler)
+                hacim_satir   = f"Alacak (ciro) hacmi: {toplam_hacim:,.0f} TL | "
+                def _fmt_pasif(k):
+                    return (
+                        f"  {k['kod']} — {k['ad'][:40] if k['ad'] else '(adsız)'}: "
+                        f"bakiye (şirketin borcu) {abs(k['bakiye']):,.0f} TL | "
+                        f"hacim {k['alacak_top']:,.0f} TL"
+                    )
+                kalem_satirlari = "\n".join(_fmt_pasif(k) for k in sirali[:10])
+
+            else:
+                # Bilinmeyen hesap — hesap tipine göre genel kural
+                tip = _hesap_tipi(parent)
+                if tip == "pasif":
+                    sirali        = sorted(kalemler, key=lambda k: abs(k["bakiye"]), reverse=True)
+                    toplam_bakiye = sum(abs(k["bakiye"]) for k in kalemler if k["bakiye"] < 0)
+                    toplam_hacim  = sum(k["alacak_top"] for k in kalemler)
+                    hacim_satir   = f"Alacak hacmi: {toplam_hacim:,.0f} TL | "
+                    def _fmt_pasif_gen(k):
+                        return (
+                            f"  {k['kod']} — {k['ad'][:40] if k['ad'] else '(adsız)'}: "
+                            f"bakiye {abs(k['bakiye']):,.0f} TL"
+                        )
+                    kalem_satirlari = "\n".join(_fmt_pasif_gen(k) for k in sirali[:10])
+                else:
+                    sirali        = sorted(kalemler, key=lambda k: k["bakiye"], reverse=True)
+                    toplam_bakiye = sum(k["bakiye"] for k in kalemler if k["bakiye"] > 0)
+                    toplam_hacim  = 0.0
+                    hacim_satir   = ""
+                    def _fmt_aktif_gen(k):
+                        return (
+                            f"  {k['kod']} — {k['ad'][:40] if k['ad'] else '(adsız)'}: "
+                            f"bakiye {k['bakiye']:,.0f} TL"
+                        )
+                    kalem_satirlari = "\n".join(_fmt_aktif_gen(k) for k in sirali[:10])
+
+            # Bakiyesi sıfır olan hesabı atla
+            if toplam_bakiye == 0:
+                logger.info(f"Alt hesap {parent} atlandı: toplam bakiye sıfır")
+                continue
+
+            top3          = sum(abs(k["bakiye"]) for k in sirali[:3])
             konsantrasyon = top3 / toplam_bakiye * 100 if toplam_bakiye else 0
 
-            bak_satirlar = "\n".join(
-                f"  {k['kod']} — {k['ad'][:35] if k['ad'] else '(adsız)'}: "
-                f"bakiye {k['bakiye']:+,.0f} TL"
-                + (f" ({bakiye_label}: {abs(k['bakiye']):,.0f} TL)" if tip != "duran_varlik" else "")
-                for k in sirali[:10]
-            )
-
-            baslik_satirlari = (
-                f"Toplam bakiye: {toplam_bakiye:,.0f} TL | "
-                + (f"{hacim_label}: {toplam_hacim:,.0f} TL | " if toplam_hacim else "")
-                + f"Alt kalem: {len(kalemler)} | "
-                f"İlk 3 kalemin bakiye payı: %{konsantrasyon:.0f}"
-            )
-
             blok = (
-                f"Hesap {parent} — {ana_ad} [{tip_aciklama}]\n"
-                f"{baslik_satirlari}\n"
-                f"Büyükten küçüğe ilk 10 kalem ({buyuk_label} önce):\n{bak_satirlar}"
+                f"Hesap {parent} — {ana_ad}\n"
+                f"Toplam bakiye: {toplam_bakiye:,.0f} TL | "
+                + hacim_satir
+                + f"Alt kalem sayısı: {len(kalemler)} | "
+                f"İlk 3 kalemin bakiye payı: %{konsantrasyon:.0f}\n"
+                f"Büyükten küçüğe ilk 10 kalem:\n{kalem_satirlari}"
             )
 
-            hesap_meta[parent] = {"ana_ad": ana_ad, "uyari": uyari, "tip": tip, "blok": blok}
+            hesap_meta[parent] = {
+                "ana_ad":   ana_ad,
+                "uyari":    uyari,
+                "blok":     blok,
+                "direktif": direktif,
+            }
         except Exception as e:
             logger.warning(f"Alt hesap blok hazırlama hatası ({parent}): {e}")
 
@@ -1222,7 +1365,7 @@ def _alt_hesap_analizi(bs) -> list:
         return []
 
     # ── 3. Her hesap için ayrı Claude çağrısı ───────────────────────────
-    client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
+    client    = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
     analizler: dict[str, str] = {}
 
     for parent, meta in hesap_meta.items():
@@ -1231,12 +1374,16 @@ def _alt_hesap_analizi(bs) -> list:
 {meta['blok']}
 
 ---
-Bankacı bakışıyla kısa analiz yaz.
+HESAP TANIMI VE ANALİZ DİREKTİFİ:
+{meta['direktif']}
+
+---
+Bankacı bakışıyla analiz yaz.
 Gözlemsel dil kullan — "bu dağılım konsantrasyon riski oluşturabilir", "bu yapı bankacılık değerlendirmelerinde dikkat çekebilir" gibi.
 "Yapmanızı öneririm" veya "tavsiye ederim" kullanma. "Şirketiniz" diye hitap et.
 
 Tam olarak şu 3 başlık:
-**Tespit:** Bakiye dağılımını ve (varsa) hacim/bakiye ilişkisini betimle. 2-3 cümle.
+**Tespit:** Direktife göre kalem detaylarını ve bakiye/hacim dağılımını betimle. 2-3 cümle.
 **Risk/Fırsat:** Bu yapının finansal profile olası etkisi. 2 cümle.
 **Öneri:** Finansal profili güçlendirebilecek potansiyel aksiyonlar. 1-2 cümle.
 
@@ -1249,7 +1396,7 @@ Türkçe yaz."""
             response = _claude_call(
                 client,
                 "claude-haiku-4-5-20251001",
-                600,
+                700,
                 [{"role": "user", "content": prompt}],
             )
             raw = response.content[0].text.strip()
@@ -1265,9 +1412,9 @@ Türkçe yaz."""
     for parent, meta in hesap_meta.items():
         sonuclar.append({
             "ana_hesap_kodu": parent,
-            "ana_hesap_adi": meta["ana_ad"],
-            "analiz_metni": analizler.get(parent, "Analiz üretilemedi."),
-            "uyari_notu": meta["uyari"],
+            "ana_hesap_adi":  meta["ana_ad"],
+            "analiz_metni":   analizler.get(parent, "Analiz üretilemedi."),
+            "uyari_notu":     meta["uyari"],
         })
 
     return sonuclar
