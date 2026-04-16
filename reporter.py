@@ -649,118 +649,223 @@ def _senaryo_hesapla(bs, sektor: str, aciklama: str, degisiklikler: dict, baz_sk
     )
 
 
-SENARYO_TANIMLARI = [
-    {
-        "aciklama": "Ortaklar cari hesabını (331) sermayeye ekle",
-        "degisiklikler": lambda bs: {
-            "ortaklara_borclar": -bs.ortaklara_borclar,
-            "odenmis_sermaye": bs.ortaklara_borclar,
-        },
-        "etkilenen": ["borc_ozkaynak", "finansal_kaldırac", "ortaklar_cari_orani", "kv_borc_orani"],
-    },
-    {
-        "aciklama": "Kısa vadeli banka kredisinin yarısını uzun vadeye çevir",
-        "degisiklikler": lambda bs: {
-            "banka_kredileri_kv": -(bs.banka_kredileri_kv * 0.5),
-            "banka_kredileri_uv": bs.banka_kredileri_kv * 0.5,
-        },
-        "etkilenen": ["cari_oran", "asit_test", "kv_borc_orani"],
-    },
-    {
-        "aciklama": "Stokların %30'unu erit, nakde çevir",
-        "degisiklikler": lambda bs: {
-            "stoklar": -(bs.stoklar * 0.3),
-            "banka": bs.stoklar * 0.3,
-        },
-        "etkilenen": ["cari_oran", "asit_test", "stok_devir", "nakit_donusum_suresi"],
-    },
-    {
-        "aciklama": "Vadesi geçmiş alacakların %50'sini tahsil et",
-        "degisiklikler": lambda bs: {
-            "ticari_alacaklar": -(bs.ticari_alacaklar * 0.5),
-            "banka": bs.ticari_alacaklar * 0.5,
-        },
-        "etkilenen": ["asit_test", "nakit_oran", "alacak_tahsil_suresi", "nakit_donusum_suresi"],
-    },
-    {
-        "aciklama": "Sermaye artırımı (özkaynaklar kadar ek sermaye)",
-        "degisiklikler": lambda bs: {
-            "odenmis_sermaye": bs.ozkaynaklar,
-            "banka": bs.ozkaynaklar,
-        },
-        "etkilened": ["borc_ozkaynak", "finansal_kaldırac", "cari_oran", "nakit_oran"],
-    },
-    {
-        "aciklama": "Tüm aksiyonları birlikte uygula",
-        "degisiklikler": lambda bs: {
-            "ortaklara_borclar": -bs.ortaklara_borclar,
-            "odenmis_sermaye": bs.ortaklara_borclar,
-            "banka_kredileri_kv": -(bs.banka_kredileri_kv * 0.5),
-            "banka_kredileri_uv": bs.banka_kredileri_kv * 0.5,
-            "stoklar": -(bs.stoklar * 0.3),
-            "ticari_alacaklar": -(bs.ticari_alacaklar * 0.3),
-            "banka": (bs.stoklar * 0.3 + bs.ticari_alacaklar * 0.3),
-        },
-        "etkilened": ["cari_oran", "asit_test", "borc_ozkaynak", "kv_borc_orani", "ortaklar_cari_orani"],
-    },
-]
-
-
 def _senaryolari_hesapla(bs, skor_sonuc: "SkorSonuc", sektor: str) -> list[SenaryoSonuc]:
-    from scorer import skorla
+    """
+    Tamamen dinamik senaryo motoru.
+
+    1. Zayıf/kötü rasyoları tespit et.
+    2. Her rasyo için o rasyoyu bir sonraki banda taşıyacak minimum BS değişikliğini hesapla.
+    3. BS2'ye uygula, raw_delta (toplam_puan farkı) hesapla — sadece > 0 olanları al.
+    4. Sona kombine senaryo ekle.
+    """
+    from scorer import (skorla, RASYO_TANIMLARI, _bant_bul,
+                        _hesapla_degerler, _harf_notu)
     import dataclasses
 
+    baz_puan = skor_sonuc.toplam_puan
     baz_skor = skor_sonuc.skor
-    sonuclar = []
+    degerler  = _hesapla_degerler(bs)
 
-    for tanim in SENARYO_TANIMLARI:
-        try:
-            bs2 = dataclasses.replace(bs)
-            delta = tanim["degisiklikler"](bs)
-            for alan, deger in delta.items():
-                if hasattr(bs2, alan):
-                    setattr(bs2, alan, max(0, getattr(bs2, alan) + deger))
+    rasyo_meta = {t["id"]: t for t in RASYO_TANIMLARI}
 
-            yeni = skorla(bs2, sektor=sektor)
-            # Delta'yı raw toplam_puan üzerinden hesapla — kritik bayrak tavan
-            # (min 44) her iki skoru da eziyor, capped skor üzerinden hesaplarsak
-            # hep 0 çıkıyor. toplam_puan tavan uygulanmadan önceki ham rasyo toplamı.
-            raw_delta = round(yeni.toplam_puan) - round(skor_sonuc.toplam_puan)
-            sonuclar.append(SenaryoSonuc(
-                aciklama=tanim["aciklama"],
-                degisiklik=delta,
-                yeni_skor=yeni.skor,
-                skor_delta=raw_delta,
-                yeni_harf=yeni.harf,
-                yeni_limit_aciklama=yeni.kredi_limit_aciklama,
-                etkilenen_rasyolar=tanim.get("etkilenen", []),
-            ))
-        except Exception as e:
-            logger.warning(f"Senaryo hesaplama hatası ({tanim.get('aciklama','?')}): {e}")
-
-    # "Tüm aksiyonları uygula" senaryosunu sona al
-    tekli = [s for s in sonuclar if "birlikte" not in s.aciklama.lower()]
-    kombine = [s for s in sonuclar if "birlikte" in s.aciklama.lower()]
-
-    # Zorluk/etki oranına göre sırala (yüksek etki + düşük zorluk önce)
-    # Senaryo tanımına zorluk puanı ekleyelim
-    zorluk_map = {
-        "Ortaklar cari": 3,      # Düşük zorluk
-        "vadesi geçmiş": 2,      # Orta zorluk
-        "Stok": 2,               # Orta zorluk
-        "Kısa vadeli banka": 2,  # Orta zorluk
-        "Sermaye artırımı": 1,   # Yüksek zorluk
+    # Zayıf/kötü rasyoların id → RasyoSonuc objesi
+    zayif = {
+        getattr(r, "id", ""): r
+        for r in skor_sonuc.rasyolar
+        if r.bant in ("kotu", "zayif")
     }
 
-    def oncelik(s):
-        zorluk = 1
-        for anahtar, puan in zorluk_map.items():
-            if anahtar.lower() in s.aciklama.lower():
-                zorluk = puan
-                break
-        return s.skor_delta * zorluk
+    def sonraki_esik(rid: str, val: float) -> float | None:
+        """Bir sonraki bandın alt eşiğini döndür (None = zaten mükemmel)."""
+        t = rasyo_meta.get(rid)
+        if not t:
+            return None
+        m, i, z = t["esikler"].get(sektor, t["esikler"]["ticaret"])
+        band = _bant_bul(val, (m, i, z), t["yon"])
+        if t["yon"] == "yuksek_iyi":
+            return {" kotu": z, "kotu": z, "zayif": i, "iyi": m}.get(band)
+        else:
+            return {"kotu": z, "zayif": i, "iyi": m}.get(band)
 
-    tekli.sort(key=oncelik, reverse=True)
+    def raw_delta(bs2) -> int:
+        yeni = skorla(bs2, sektor=sektor)
+        return round(yeni.toplam_puan) - round(baz_puan)
+
+    def yeni_skor_harf(delta: int) -> tuple[int, str, str]:
+        """Teorik (cap'siz) yeni skor, harf ve kredi limit açıklaması."""
+        ys = min(100, baz_skor + delta)
+        h, _, limit, *_ = _harf_notu(ys)
+        return ys, h, limit
+
+    def uygula(bs2, delta_dict: dict):
+        for alan, deger in delta_dict.items():
+            if hasattr(bs2, alan):
+                setattr(bs2, alan, max(0, getattr(bs2, alan) + deger))
+
+    # ── Senaryo üreticileri ──────────────────────────────────────────────
+
+    uretilen: list[tuple[str, dict, list[str]]] = []
+    # (aciklama, delta_dict, etkilenen_rasyolar)
+
+    # 1. cari_oran — nakit enjeksiyonu (sermaye artırımı)
+    if "cari_oran" in zayif:
+        esik = sonraki_esik("cari_oran", degerler["cari_oran"])
+        if esik is not None:
+            # donen / kv_new >= esik → tek taraflı: donen arttır
+            donen_needed = esik * bs.kv_borclar
+            delta = donen_needed - bs.donen_varliklar
+            if delta > 0:
+                uretilen.append((
+                    f"Nakit enjeksiyonu ile cari oran iyileştir — {delta:,.0f} TL sermaye artır",
+                    {"odenmis_sermaye": delta, "banka": delta},
+                    ["cari_oran", "asit_test", "nakit_oran",
+                     "borc_ozkaynak", "finansal_kaldırac"],
+                ))
+
+    # 2. asit_test — stok eritme
+    if "asit_test" in zayif:
+        esik = sonraki_esik("asit_test", degerler["asit_test"])
+        if esik is not None:
+            # (donen - stok + delta) / kv >= esik → delta = esik*kv - (donen-stok)
+            liquid_needed = esik * bs.kv_borclar
+            liquid_cur    = bs.donen_varliklar - bs.stoklar
+            delta = liquid_needed - liquid_cur
+            delta = min(delta, bs.stoklar)   # stoklardan fazlasını eremeyiz
+            if delta > 0:
+                uretilen.append((
+                    f"Stoklardan {delta:,.0f} TL nakde çevir — asit-test iyileştir",
+                    {"stoklar": -delta, "banka": delta},
+                    ["asit_test", "cari_oran", "stok_devir", "nakit_donusum_suresi"],
+                ))
+
+    # 3. nakit_oran — alacak tahsili
+    if "nakit_oran" in zayif:
+        esik = sonraki_esik("nakit_oran", degerler["nakit_oran"])
+        if esik is not None:
+            nakit_needed = esik * bs.kv_borclar
+            delta = nakit_needed - bs.nakit_ve_benzerleri
+            delta = min(delta, bs.ticari_alacaklar)
+            if delta > 0:
+                uretilen.append((
+                    f"Alacaklardan {delta:,.0f} TL tahsil et — nakit oran iyileştir",
+                    {"ticari_alacaklar": -delta, "banka": delta},
+                    ["nakit_oran", "asit_test", "cari_oran",
+                     "alacak_tahsil_suresi", "nakit_donusum_suresi"],
+                ))
+
+    # 4. kv_borc_orani — KV banka kredisini UV'ye çevir
+    if "kv_borc_orani" in zayif:
+        esik = sonraki_esik("kv_borc_orani", degerler["kv_borc_orani"])
+        if esik is not None and bs.toplam_borclar > 0:
+            # kv_new / toplam <= esik → kv_new = esik * toplam
+            kv_new = esik * bs.toplam_borclar
+            delta  = bs.kv_borclar - kv_new
+            delta  = min(delta, bs.banka_kredileri_kv)
+            if delta > 0:
+                uretilen.append((
+                    f"KV banka kredisinden {delta:,.0f} TL UV'ye çevir — vade yapısı iyileştir",
+                    {"banka_kredileri_kv": -delta, "banka_kredileri_uv": delta},
+                    ["kv_borc_orani", "cari_oran", "asit_test"],
+                ))
+
+    # 5. ortaklar_cari_orani — ortaklar borcu → sermaye
+    if "ortaklar_cari_orani" in zayif and bs.ortaklara_borclar > 0:
+        esik = sonraki_esik("ortaklar_cari_orani", degerler["ortaklar_cari_orani"])
+        if esik is not None and bs.toplam_pasif > 0:
+            # (ortaklar - delta) / pasif <= esik
+            delta = bs.ortaklara_borclar - esik * bs.toplam_pasif
+            delta = min(delta, bs.ortaklara_borclar)
+            if delta > 0:
+                uretilen.append((
+                    f"Ortaklara borçtan {delta:,.0f} TL sermayeye dönüştür",
+                    {"ortaklara_borclar": -delta, "odenmis_sermaye": delta},
+                    ["ortaklar_cari_orani", "borc_ozkaynak",
+                     "finansal_kaldırac", "cari_oran"],
+                ))
+
+    # 6. borc_ozkaynak — sermaye artırımı (cari_oran zaten hedeflenmiyorsa ayrı senaryo)
+    if "borc_ozkaynak" in zayif and "cari_oran" not in zayif:
+        esik = sonraki_esik("borc_ozkaynak", degerler["borc_ozkaynak"])
+        if esik is not None and esik > 0:
+            # borclar / oz_new <= esik → oz_new = borclar / esik
+            oz_needed = bs.toplam_borclar / esik
+            delta = oz_needed - bs.ozkaynaklar
+            if delta > 0:
+                uretilen.append((
+                    f"Sermaye artırımı {delta:,.0f} TL — borç/özkaynak iyileştir",
+                    {"odenmis_sermaye": delta, "banka": delta},
+                    ["borc_ozkaynak", "finansal_kaldırac",
+                     "cari_oran", "nakit_oran"],
+                ))
+
+    # 7. alacak_tahsil_suresi — alacak tahsili (nakit_oran zaten hedeflenmiyorsa)
+    if "alacak_tahsil_suresi" in zayif and "nakit_oran" not in zayif and bs.net_satislar > 0:
+        esik = sonraki_esik("alacak_tahsil_suresi", degerler["alacak_tahsil_suresi"])
+        if esik is not None:
+            alacak_new = esik * bs.net_satislar / 365
+            delta = bs.ticari_alacaklar - alacak_new
+            delta = min(delta, bs.ticari_alacaklar * 0.5)
+            if delta > 0:
+                uretilen.append((
+                    f"Vadeli alacaklardan {delta:,.0f} TL tahsil et — tahsil süresi kısalt",
+                    {"ticari_alacaklar": -delta, "banka": delta},
+                    ["alacak_tahsil_suresi", "nakit_oran", "asit_test"],
+                ))
+
+    # ── Her senaryo için raw_delta hesapla, sadece > 0 olanları tut ────
+    sonuclar: list[SenaryoSonuc] = []
+    aktif_delta_dicts: list[dict] = []   # kombine senaryo için
+
+    for aciklama, delta_dict, etkilenen in uretilen:
+        try:
+            bs2 = dataclasses.replace(bs)
+            uygula(bs2, delta_dict)
+            rd = raw_delta(bs2)
+            if rd > 0:
+                ys, harf, limit = yeni_skor_harf(rd)
+                sonuclar.append(SenaryoSonuc(
+                    aciklama=aciklama,
+                    degisiklik=delta_dict,
+                    yeni_skor=ys,
+                    skor_delta=rd,
+                    yeni_harf=harf,
+                    yeni_limit_aciklama=limit,
+                    etkilenen_rasyolar=etkilenen,
+                ))
+                aktif_delta_dicts.append(delta_dict)
+        except Exception as e:
+            logger.warning(f"Senaryo hesaplama hatası ({aciklama[:40]}): {e}")
+
+    # ── Kombine senaryo ──────────────────────────────────────────────────
+    if len(aktif_delta_dicts) >= 2:
+        try:
+            combo_dict: dict[str, float] = {}
+            for d in aktif_delta_dicts:
+                for alan, deger in d.items():
+                    combo_dict[alan] = combo_dict.get(alan, 0.0) + deger
+
+            bs_combo = dataclasses.replace(bs)
+            uygula(bs_combo, combo_dict)
+            rd_combo = raw_delta(bs_combo)
+            if rd_combo > 0:
+                ys, harf, limit = yeni_skor_harf(rd_combo)
+                combo_etkilenen = sorted({r for s in sonuclar for r in s.etkilenen_rasyolar})
+                sonuclar.append(SenaryoSonuc(
+                    aciklama="Tüm aksiyonları birlikte uygula",
+                    degisiklik=combo_dict,
+                    yeni_skor=ys,
+                    skor_delta=rd_combo,
+                    yeni_harf=harf,
+                    yeni_limit_aciklama=limit,
+                    etkilenen_rasyolar=combo_etkilenen,
+                ))
+        except Exception as e:
+            logger.warning(f"Kombine senaryo hatası: {e}")
+
+    # Kombine en sonda, tekli delta'ya göre azalan
+    tekli  = [s for s in sonuclar if "birlikte" not in s.aciklama]
+    kombine = [s for s in sonuclar if "birlikte"     in s.aciklama]
+    tekli.sort(key=lambda s: s.skor_delta, reverse=True)
     return tekli + kombine
 
 
@@ -1245,10 +1350,6 @@ def rapor_olustur(
 
     # Negatif delta olanları çıkar; sıfır delta olanlar (yapısal iyileştirme) dahil edilir
     senaryolar = [s for s in senaryolar if s.skor_delta >= 0]
-
-    # Senaryolara TL açıklaması ekle
-    for s in senaryolar:
-        s.aciklama = _senaryo_tl_aciklama(s.aciklama, s.degisiklik, bs)
 
     from question_bank import sorulari_uret
     banka_sorulari = sorulari_uret(bs, skor_sonuc)
