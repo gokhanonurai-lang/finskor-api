@@ -1120,7 +1120,7 @@ def _hesap_tipi(parent: str) -> str:
 
 def _alt_hesap_analizi(bs) -> list:
     """
-    Hibrit hesap seçimiyle tüm alt hesapları tek Claude çağrısıyla analiz eder.
+    Hibrit hesap seçimiyle alt hesapları her biri için ayrı Claude çağrısıyla analiz eder.
 
     Seçim kuralları:
       - Fix liste (120,150,253,254,300,301,320,321,400,401): kalem sayısına bakılmaksızın dahil
@@ -1144,7 +1144,6 @@ def _alt_hesap_analizi(bs) -> list:
         if parent in _FIX_LISTE:
             secilen.append(parent)
         elif parent not in _DINAMIK_HARIC:
-            # Bakiyeyi alt kalemlerden hesapla
             bakiye_toplam = abs(sum(k["bakiye"] for k in kalemler))
             if len(kalemler) > 20 and bakiye_toplam > 2_000_000:
                 secilen.append(parent)
@@ -1152,9 +1151,8 @@ def _alt_hesap_analizi(bs) -> list:
     if not secilen:
         return []
 
-    # ── 2. Her hesap için blok ve meta hazırla ───────────────────────────
-    hesap_bloklari = []
-    hesap_meta = {}   # parent → {ana_ad, uyari, tip}
+    # ── 2. Her hesap için meta ve blok hazırla ───────────────────────────
+    hesap_meta = {}  # parent → {ana_ad, uyari, tip, blok}
 
     for parent in secilen:
         try:
@@ -1166,33 +1164,32 @@ def _alt_hesap_analizi(bs) -> list:
 
             ana_ad = _ALT_HESAP_ADLARI.get(parent, f"Hesap {parent}")
             tip    = _hesap_tipi(parent)
-            hesap_meta[parent] = {"ana_ad": ana_ad, "uyari": uyari, "tip": tip}
 
             # ── Hesap tipine göre hacim & bakiye kolonları ──
             if tip == "aktif":
-                # Hacim = BORÇ kolonu; bakiye = BORÇ BAKİYESİ (pozitif)
                 toplam_hacim  = sum(k["borc_top"] for k in kalemler)
                 toplam_bakiye = sum(k["bakiye"] for k in kalemler if k["bakiye"] > 0)
                 sirali = sorted(kalemler, key=lambda k: k["bakiye"], reverse=True)
-                hacim_label = "Borç hacmi"
+                hacim_label  = "Borç hacmi"
                 bakiye_label = "Borç bakiyesi (tahsil edilmemiş alacak)"
                 buyuk_label  = "en büyük bakiyeli müşteri"
+                tip_aciklama = "aktif hesap (1xx) — 'en büyük bakiyeli müşteri', 'tahsil edilmemiş alacak' terminolojisi kullan"
             elif tip == "pasif":
-                # Hacim = ALACAK kolonu; bakiye = ALACAK BAKİYESİ (abs)
                 toplam_hacim  = sum(k["alacak_top"] for k in kalemler)
                 toplam_bakiye = sum(abs(k["bakiye"]) for k in kalemler if k["bakiye"] < 0)
                 sirali = sorted(kalemler, key=lambda k: abs(k["bakiye"]), reverse=True)
-                hacim_label = "Alacak hacmi"
+                hacim_label  = "Alacak hacmi"
                 bakiye_label = "Alacak bakiyesi (ödenmemiş borç)"
                 buyuk_label  = "en büyük bakiyeli tedarikçi/banka"
+                tip_aciklama = "pasif hesap (3xx/4xx) — 'en büyük bakiyeli tedarikçi/banka', 'ödenmemiş borç' terminolojisi kullan"
             else:  # duran_varlik
-                # Hacim yok; bakiye = BORÇ BAKİYESİ (net defter değeri)
                 toplam_hacim  = 0.0
                 toplam_bakiye = sum(k["bakiye"] for k in kalemler if k["bakiye"] > 0)
                 sirali = sorted(kalemler, key=lambda k: k["bakiye"], reverse=True)
-                hacim_label = None
+                hacim_label  = None
                 bakiye_label = "Net defter değeri"
                 buyuk_label  = "en yüksek defter değerli kalem"
+                tip_aciklama = "duran varlık hesabı (2xx) — 'en yüksek defter değerli kalem' terminolojisi kullan"
 
             top3 = sum(abs(k["bakiye"]) for k in sirali[:3])
             konsantrasyon = top3 / toplam_bakiye * 100 if toplam_bakiye else 0
@@ -1211,67 +1208,59 @@ def _alt_hesap_analizi(bs) -> list:
                 f"İlk 3 kalemin bakiye payı: %{konsantrasyon:.0f}"
             )
 
-            hesap_bloklari.append(
-                f"### Hesap {parent} — {ana_ad} [tip: {tip}]\n"
+            blok = (
+                f"Hesap {parent} — {ana_ad} [{tip_aciklama}]\n"
                 f"{baslik_satirlari}\n"
                 f"Büyükten küçüğe ilk 10 kalem ({buyuk_label} önce):\n{bak_satirlar}"
             )
+
+            hesap_meta[parent] = {"ana_ad": ana_ad, "uyari": uyari, "tip": tip, "blok": blok}
         except Exception as e:
             logger.warning(f"Alt hesap blok hazırlama hatası ({parent}): {e}")
 
-    if not hesap_bloklari:
+    if not hesap_meta:
         return []
 
-    bloklar_str = "\n\n".join(hesap_bloklari)
-    parent_listesi = list(hesap_meta.keys())
+    # ── 3. Her hesap için ayrı Claude çağrısı ───────────────────────────
+    client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
+    analizler: dict[str, str] = {}
 
-    prompt = f"""BilankoSkor finansal analiz yazılımı — alt hesap analiz modülü.
-Aşağıda hesap tipine göre hazırlanmış alt kalem dökümleri var.
+    for parent, meta in hesap_meta.items():
+        prompt = f"""BilankoSkor finansal analiz yazılımı — alt hesap analiz modülü.
 
-{bloklar_str}
+{meta['blok']}
 
 ---
-Her hesap için bankacı bakışıyla kısa analiz yaz.
+Bankacı bakışıyla kısa analiz yaz.
 Gözlemsel dil kullan — "bu dağılım konsantrasyon riski oluşturabilir", "bu yapı bankacılık değerlendirmelerinde dikkat çekebilir" gibi.
 "Yapmanızı öneririm" veya "tavsiye ederim" kullanma. "Şirketiniz" diye hitap et.
 
-Hesap tipine göre doğru terminoloji kullan:
-- aktif hesaplar (1xx): "en büyük bakiyeli müşteri", "tahsil edilmemiş alacak"
-- pasif hesaplar (3xx/4xx): "en büyük bakiyeli tedarikçi/banka", "ödenmemiş borç"
-- duran varlık hesapları (2xx): "en yüksek defter değerli kalem"
-
-Her hesap için tam olarak şu 3 başlık:
+Tam olarak şu 3 başlık:
 **Tespit:** Bakiye dağılımını ve (varsa) hacim/bakiye ilişkisini betimle. 2-3 cümle.
 **Risk/Fırsat:** Bu yapının finansal profile olası etkisi. 2 cümle.
 **Öneri:** Finansal profili güçlendirebilecek potansiyel aksiyonlar. 1-2 cümle.
 
 SADECE JSON döndür. Markdown veya açıklama ekleme. Format:
-{{
-  "analizler": {{
-    "<hesap_kodu>": "<**Tespit:** ... **Risk/Fırsat:** ... **Öneri:** ...>",
-    ...
-  }}
-}}
+{{"analiz": "<**Tespit:** ... **Risk/Fırsat:** ... **Öneri:** ...>"}}
 
-Hesap kodları: {parent_listesi}
 Türkçe yaz."""
 
-    try:
-        client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
-        response = _claude_call(
-            client,
-            "claude-sonnet-4-20250514",
-            2000,
-            [{"role": "user", "content": prompt}],
-        )
-        raw = response.content[0].text.strip()
-        raw = raw.replace("```json", "").replace("```", "").strip()
-        data = _json.loads(raw)
-        analizler = data.get("analizler", {})
-    except Exception as e:
-        logger.warning(f"Alt hesap Claude çağrısı başarısız: {e}")
-        analizler = {}
+        try:
+            response = _claude_call(
+                client,
+                "claude-haiku-4-5-20251001",
+                600,
+                [{"role": "user", "content": prompt}],
+            )
+            raw = response.content[0].text.strip()
+            raw = raw.replace("```json", "").replace("```", "").strip()
+            data = _json.loads(raw)
+            analizler[parent] = data.get("analiz", "Analiz üretilemedi.")
+        except Exception as e:
+            logger.warning(f"Alt hesap Claude çağrısı başarısız ({parent}): {e}")
+            analizler[parent] = "Analiz üretilemedi."
 
+    # ── 4. Sonuçları birleştir ───────────────────────────────────────────
     sonuclar = []
     for parent, meta in hesap_meta.items():
         sonuclar.append({
