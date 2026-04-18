@@ -1146,8 +1146,8 @@ def _alt_hesap_analizi(bs) -> list:
         "150": (
             "Bu AKTİF STOK hesabıdır. Bakiye = eldeki hammadde stok değeri.\n"
             "Borç hareketi stok alımı, alacak hareketi stok kullanımıdır — bunlar ciro değil.\n"
-            "Bankacılık perspektifi: stok değeri gerçekçi mi, hızlı nakde dönebilir mi.\n"
-            "Stok çeşitlendirmesi bankacılığı ilgilendirmez, bunu yazma.\n"
+            "Bankacılık perspektifi: stok değeri gerçekçi mi, hızlı nakde dönebilir mi, stok devir hızı nasıl.\n"
+            "Stok çeşitlendirmesi veya tek madde bağımlılığı bankacılığı ilgilendirmez, bunu kesinlikle yazma.\n"
             "Teminat değeri ve likidite açısından değerlendir."
         ),
         "159": (
@@ -1167,23 +1167,25 @@ def _alt_hesap_analizi(bs) -> list:
         ),
         "253": (
             "Bu DURAN VARLIK hesabıdır. Bakiye = makinelerin net defter değeri.\n"
-            "En yüksek değerli makineleri ismiyle ve değeriyle say.\n"
+            "En yüksek değerli makineleri ismiyle ve değeriyle say. Kalem adlarını mizanda yazan ismiyle kullan, kendi yorumunla isim türetme veya değiştirme.\n"
             "Yaş dağılımı, teminat kapasitesi ve teknolojik eskime riski açısından "
             "bankacılık perspektifinden yorumla."
         ),
         "254": (
             "Bu DURAN VARLIK hesabıdır. Bakiye = araçların net defter değeri.\n"
-            "En değerli araçları ismiyle say.\n"
+            "En değerli araçları ismiyle say. Kalem adlarını mizanda yazan ismiyle kullan, kendi yorumunla isim türetme veya değiştirme.\n"
             "Filo yapısı, yaş dağılımı, teminat kapasitesi açısından bankacılık perspektifinden yorumla."
         ),
         "255": (
             "Bu DURAN VARLIK hesabıdır. Bakiye = demirbaşların net defter değeri.\n"
             "Demirbaşlar bankacılıkta düşük teminat değeri taşır, bunu belirt.\n"
+            "Kalem adlarını mizanda yazan ismiyle kullan, kendi yorumunla isim türetme veya değiştirme.\n"
             "Yaş dağılımı ve değer yapısını değerlendir."
         ),
         "264": (
             "Bu DURAN VARLIK hesabıdır. Bakiye = özelleştirilmiş yatırım maliyetleri.\n"
-            "Büyük kalemleri ismiyle say, geri kazanılabilirlik ve teminat değeri açısından yorumla."
+            "Büyük kalemleri ismiyle say. Kalem adlarını mizanda yazan ismiyle kullan, kendi yorumunla isim türetme veya değiştirme.\n"
+            "Geri kazanılabilirlik ve teminat değeri açısından yorumla."
         ),
         "300": (
             "Bu PASİF hesaptır. Bakiye = şirketin kısa vadeli banka borcu.\n"
@@ -1201,9 +1203,10 @@ def _alt_hesap_analizi(bs) -> list:
             "Bağımlılık riski, alternatif tedarikçi, ödeme gecikirse operasyonel etki açısından yorumla."
         ),
         "321": (
-            "Bu PASİF hesaptır. Bakiye = borç senetleri yükümlülüğü.\n"
-            "Bakiyesi sıfır ise tüm senetler ödenmiş demektir, analiz yapma.\n"
-            "Bakiye varsa: büyük senet kalemlerini ismiyle say, vade yapısını ve ödeme riskini değerlendir."
+            "Bu PASİF hesaptır. Bakiye = şirketin bankalara verdiği ödenmemiş çeklerin tutarı.\n"
+            "Bu hesap tamamen TL cinsindendir, dövizli değildir — dövizli ifadesini kesinlikle kullanma.\n"
+            "Hangi bankalara verilen çekler var, toplam yükümlülük ne kadar, banka bazında dağılım nasıl değerlendir.\n"
+            "Bakiyesi sıfır ise bu hesabı analiz etme."
         ),
         "329": (
             "Bu PASİF hesaptır. Bakiye = şirketin ödeyeceği diğer ticari borçlar.\n"
