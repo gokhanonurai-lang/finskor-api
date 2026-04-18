@@ -631,6 +631,22 @@ def _read_excel(filepath):
         f"ham:{len(raw_rows)} atlanan:{skipped} islenen:{len(result)}"
     )
 
+    # ── Çifte sayım önleme: her grupta sadece yaprak (leaf) nodları tut ──
+    # Bir kalemin kodu başka bir kalemin prefix'i ise (örn. "180.S2" ile "180.S2.01")
+    # o ara-node satırını çıkar; sadece en alt kalemleri topla.
+    def _leaf_only(kalemler: list) -> list:
+        kodlar = {k["kod"] for k in kalemler}
+        return [
+            k for k in kalemler
+            if not any(
+                other != k["kod"] and other.startswith(k["kod"] + ".")
+                for other in kodlar
+            )
+        ]
+
+    for parent in list(_alt_raw.keys()):
+        _alt_raw[parent] = _leaf_only(_alt_raw[parent])
+
     # Alt hesap filtresi: en az 1 anlamlı alt kalem (reporter hibrit eşiği uygular)
     alt_hesap_filtered = {p: v for p, v in _alt_raw.items() if len(v) >= 1}
 

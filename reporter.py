@@ -1136,100 +1136,93 @@ def _alt_hesap_analizi(bs) -> list:
 
     _HESAP_DIREKTIF: dict[str, str] = {
         "120": (
-            "Bu AKTİF hesaptır. Bakiye = şirketin müşterilerden tahsil edeceği alacak. "
-            "Hacim = müşteriyle yapılan ciro.\n"
-            "Analiz direktifi: Kaç müşteri var, büyük müşterileri ismiyle say ve cirolarını "
-            "ve tahsil edilmemiş bakiyelerini yaz. Konsantrasyon varsa bu müşteriler ödeme "
-            "yapamazsa nakit akışına etkisini değerlendir. Bakiyesi sıfır (tamamen tahsil "
-            "edilmiş) ile bakiyesi yüksek müşterileri karşılaştır."
+            "Bu AKTİF hesaptır. Bakiye = müşterilerin şirkete olan borcu, tahsil edilmemiş alacak.\n"
+            "Hacim = o müşteriyle yapılan satış tutarı — 'borç hacmi' deme, 'satış hacmi' veya 'ciro' de.\n"
+            "Büyük müşterileri ismiyle, satış hacimleriyle ve tahsil edilmemiş bakiyeleriyle say.\n"
+            "Bu müşteriler ödeme yapamazsa nakit akışına etkisini değerlendir.\n"
+            "Bakiyesi sıfır olan müşteriler tamamen tahsil edilmiş demektir.\n"
+            "Konsantrasyon riski ve tahsilat riski açısından bankacılık perspektifinden yorumla."
         ),
         "150": (
-            "Bu AKTİF STOK hesabıdır. Bakiye = eldeki hammadde/malzeme stoku. "
-            "Alacak değil, fiziksel stok.\n"
-            "Analiz direktifi: Stok yapısını değerlendir, tek kalemde yoğunlaşma var mı, "
-            "stok devir hızı ve likidite açısından bankacılık perspektifinden yorumla."
+            "Bu AKTİF STOK hesabıdır. Bakiye = eldeki hammadde stok değeri.\n"
+            "Borç hareketi stok alımı, alacak hareketi stok kullanımıdır — bunlar ciro değil.\n"
+            "Bankacılık perspektifi: stok değeri gerçekçi mi, hızlı nakde dönebilir mi.\n"
+            "Stok çeşitlendirmesi bankacılığı ilgilendirmez, bunu yazma.\n"
+            "Teminat değeri ve likidite açısından değerlendir."
         ),
         "159": (
-            "Bu AKTİF hesaptır. Bakiye = tedarikçilere verilmiş ama henüz mal/hizmet "
-            "alınmamış avanslar.\n"
-            "Analiz direktifi: Büyük avansları ismiyle say, bu avansların karşılığında mal "
-            "geldi mi gelmedi mi perspektifinden değerlendir, avans riski ve tedarikçi "
-            "güvenilirliği açısından yorumla."
+            "Bu AKTİF hesaptır. Bakiye = tedarikçilere verilmiş ama henüz mal/hizmet alınmamış avanslar.\n"
+            "Şirket ALICI konumunda, tedarikçiye avans ödemiş. Müşteri kelimesini kullanma, bunlar tedarikçi.\n"
+            "Büyük avansları ismiyle say, avansın karşılığı geldi mi gelmedi mi perspektifinden değerlendir.\n"
+            "Nakit bağlama riski ve tedarikçi güvenilirliği açısından yorumla."
         ),
         "180": (
-            "Bu AKTİF hesaptır. Bakiye = ileriki aylara ait peşin ödenmiş giderler "
-            "(sigorta, kira, abonelik vb.). Borç veya alacak değil.\n"
-            "Analiz direktifi: Büyük kalemleri ismiyle say, peşin ödenen gider yapısını "
-            "ve nakit yönetimi açısından değerlendir."
+            "Bu AKTİF hesaptır. Bakiye = ileriki aylara ait peşin ödenmiş giderler (sigorta, abonelik vb.).\n"
+            "Borç veya alacak değil, peşin gider. Sigorta giderlerinde konsantrasyon riski olmaz, bunu yazma.\n"
+            "Büyük kalemleri ismiyle say, peşin ödeme yapısını ve gider planlaması açısından değerlendir."
         ),
         "280": (
             "Bu AKTİF hesaptır. Bakiye = gelecek yıllara ait peşin ödenmiş giderler.\n"
-            "Analiz direktifi: Büyük kalemleri ismiyle say, uzun vadeli peşin ödeme "
-            "yapısını ve finansal planlamaya etkisini değerlendir."
+            "Büyük kalemleri ismiyle say, uzun vadeli peşin ödeme yapısını yorumla."
         ),
         "253": (
             "Bu DURAN VARLIK hesabıdır. Bakiye = makinelerin net defter değeri.\n"
-            "Analiz direktifi: En yüksek değerli makineleri ismiyle say, yaş dağılımını "
-            "değerlendir, teminat kapasitesi ve teknolojik eskime riski açısından "
+            "En yüksek değerli makineleri ismiyle ve değeriyle say.\n"
+            "Yaş dağılımı, teminat kapasitesi ve teknolojik eskime riski açısından "
             "bankacılık perspektifinden yorumla."
         ),
         "254": (
             "Bu DURAN VARLIK hesabıdır. Bakiye = araçların net defter değeri.\n"
-            "Analiz direktifi: En değerli araçları ismiyle say, filo yapısını değerlendir, "
-            "teminat kapasitesi ve piyasa değeri açısından bankacılık perspektifinden yorumla."
+            "En değerli araçları ismiyle say.\n"
+            "Filo yapısı, yaş dağılımı, teminat kapasitesi açısından bankacılık perspektifinden yorumla."
         ),
         "255": (
             "Bu DURAN VARLIK hesabıdır. Bakiye = demirbaşların net defter değeri.\n"
-            "Analiz direktifi: Yaş dağılımını ve değer yapısını değerlendir, teminat "
-            "açısından düşük değerli olduğunu bankacılık perspektifinden yorumla."
+            "Demirbaşlar bankacılıkta düşük teminat değeri taşır, bunu belirt.\n"
+            "Yaş dağılımı ve değer yapısını değerlendir."
         ),
         "264": (
             "Bu DURAN VARLIK hesabıdır. Bakiye = özelleştirilmiş yatırım maliyetleri.\n"
-            "Analiz direktifi: Büyük kalemleri ismiyle say, bu maliyetlerin ne olduğunu "
-            "ve geri kazanılabilirlik/teminat değeri açısından yorumla."
+            "Büyük kalemleri ismiyle say, geri kazanılabilirlik ve teminat değeri açısından yorumla."
         ),
         "300": (
-            "Bu PASİF hesaptır. Bakiye = şirketin kısa vadeli banka borcu. "
-            "Hacim = o bankadan çekilen toplam kredi.\n"
-            "Analiz direktifi: Her bankaya olan borcu ve hacmi ayrı ayrı değerlendir, "
-            "hangi bankaya ne kadar bağımlı, vade yapısı kısa vadeli risk açısından "
-            "bankacılık perspektifinden yorumla."
+            "Bu PASİF hesaptır. Bakiye = şirketin kısa vadeli banka borcu.\n"
+            "Her bankaya olan borcu ve o bankadan çekilen hacmi ayrı ayrı yaz.\n"
+            "Hangi bankaya ne kadar bağımlı, vade yapısı ve KV borç riski açısından yorumla."
         ),
         "301": (
-            "Bu PASİF hesaptır. Bakiye = kısa vadeli leasing yükümlülüğü.\n"
-            "Analiz direktifi: Kiralama yapısını ve ödeme planını değerlendir."
+            "Bu PASİF hesaptır. Bakiye = kısa vadeli finansal kiralama yükümlülüğü.\n"
+            "Kiralama yapısını ve ödeme planını değerlendir."
         ),
         "320": (
-            "Bu PASİF hesaptır. Bakiye = şirketin yurt içi tedarikçilere olan borcu. "
-            "Hacim = o tedarikçiden yapılan alım.\n"
-            "Analiz direktifi: Büyük tedarikçileri ismiyle say, bu tedarikçilere bağımlılık "
-            "riski, alternatif tedarikçi var mı, ödeme gecikirse ne olur perspektifinden yorumla."
+            "Bu PASİF hesaptır. Bakiye = şirketin tedarikçilere olan borcu.\n"
+            "Hacim = o tedarikçiden yapılan alım miktarı.\n"
+            "Büyük tedarikçileri ismiyle say.\n"
+            "Bağımlılık riski, alternatif tedarikçi, ödeme gecikirse operasyonel etki açısından yorumla."
         ),
         "321": (
-            "Bu PASİF hesaptır. Bakiye = şirketin yabancı tedarikçilere olan dövizli borcu. "
-            "Hacim = o tedarikçiden yapılan alım.\n"
-            "Analiz direktifi: Büyük tedarikçileri ismiyle say, kur riski ve döviz borç "
-            "yapısı açısından bankacılık perspektifinden yorumla."
+            "Bu PASİF hesaptır. Bakiye = borç senetleri yükümlülüğü.\n"
+            "Bakiyesi sıfır ise tüm senetler ödenmiş demektir, analiz yapma.\n"
+            "Bakiye varsa: büyük senet kalemlerini ismiyle say, vade yapısını ve ödeme riskini değerlendir."
         ),
         "329": (
-            "Bu PASİF hesaptır. Bakiye = şirketin diğer ticari borçları; şirket bu kişilere BORÇLU.\n"
-            "Analiz direktifi: Büyük borçları ismiyle say, bu borçların yapısını "
-            "(petrol, elektrik, hizmet vb.) ve konsantrasyon riskini değerlendir."
+            "Bu PASİF hesaptır. Bakiye = şirketin ödeyeceği diğer ticari borçlar.\n"
+            "Şirket bu kişilere BORÇLU.\n"
+            "Büyük borçları ismiyle say, borç yapısını ve konsantrasyon riskini değerlendir."
         ),
         "340": (
             "Bu PASİF hesaptır. Bakiye = müşterilerden alınan ama henüz teslim edilmemiş "
-            "iş/mal karşılığı avanslar. Şirketin bu müşterilere BORCU var (mal/hizmet vermek zorunda).\n"
-            "Analiz direktifi: Büyük avansları ismiyle say, bu taahhütlerin yerine "
-            "getirilememesi riskini ve nakit akışına etkisini değerlendir."
+            "iş/mal karşılığı avanslar.\n"
+            "Şirket bu müşterilere mal/hizmet teslim etmek ZORUNDA. Bu bakiye nakde dönmez, taahhüt yüküdür.\n"
+            "Büyük avansları ismiyle say, teslim taahhüdü riski açısından yorumla."
         ),
         "400": (
             "Bu PASİF hesaptır. Bakiye = şirketin uzun vadeli banka borcu.\n"
-            "Analiz direktifi: Her bankaya olan borcu değerlendir, KV ile UV arasındaki "
-            "denge ve uzun vadeli borç yönetimi açısından yorumla."
+            "Her bankaya olan borcu değerlendir, UV borç yapısını yorumla."
         ),
         "401": (
-            "Bu PASİF hesaptır. Bakiye = uzun vadeli leasing yükümlülüğü.\n"
-            "Analiz direktifi: Kiralama yapısını ve uzun vadeli ödeme planını değerlendir."
+            "Bu PASİF hesaptır. Bakiye = uzun vadeli finansal kiralama yükümlülüğü.\n"
+            "Kiralama yapısını ve ödeme planını değerlendir."
         ),
     }
 
