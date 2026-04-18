@@ -501,13 +501,26 @@ def _potansiyel_raporu(skor_sonuc: "SkorSonuc", bs) -> str:
             f"(bant: {r.bant}, kayıp puan: {kayip}/{r.max_puan}{esik_notu})\n"
         )
 
-    # ── Likidite açığı: KV Borçlar - Dönen Varlıklar ──
-    likidite_acigi = bs.kv_borclar - bs.donen_varliklar
-    likidite_satiri = (
-        f"- Likidite Açığı (KV Borçlar − Dönen Varlıklar): {likidite_acigi:,.0f} TL\n"
+    # ── Hesaplanmış likidite değerleri ──
+    likit_varliklar  = bs.donen_varliklar - bs.stoklar
+    likidite_acigi   = bs.kv_borclar - bs.donen_varliklar
+    cari_ek_gereken  = max(0, bs.kv_borclar * 1.0 - bs.donen_varliklar)
+    asit_ek_gereken  = max(0, bs.kv_borclar * 0.7 - likit_varliklar)
+
+    hesaplanmis = (
+        f"- Likidite Açığı (KV Borçlar − Dönen Varlıklar): "
+        f"{likidite_acigi:,.0f} TL\n"
         if likidite_acigi > 0 else
         f"- Dönen Varlıklar KV Borçlardan {abs(likidite_acigi):,.0f} TL fazla (pozitif likidite)\n"
     )
+    if cari_ek_gereken > 0:
+        hesaplanmis += (
+            f"- Cari oran 1.0x için gereken ek dönen varlık: {cari_ek_gereken:,.0f} TL\n"
+        )
+    if asit_ek_gereken > 0:
+        hesaplanmis += (
+            f"- Asit-test 0.7x için gereken ek likit varlık (stok hariç): {asit_ek_gereken:,.0f} TL\n"
+        )
 
     prompt = f"""Sen deneyimli bir Türk bankacı ve finansal danışmansın. Aşağıdaki firmaya özel verilerle, firmanın finansal skorunu iyileştirmesi için detaylı bir yol haritası yaz. Türkçe yaz.
 
@@ -517,19 +530,22 @@ FİRMA VERİLERİ:
 - Operasyonel İyileştirmeyle Maksimum: {maksimum_skor}/100
 - KV Borçlar: {bs.kv_borclar:,.0f} TL
 - Dönen Varlıklar: {bs.donen_varliklar:,.0f} TL
-{likidite_satiri}- Net Satışlar: {bs.net_satislar:,.0f} TL
+- Likit Varlıklar (stok hariç): {likit_varliklar:,.0f} TL
+- Net Satışlar: {bs.net_satislar:,.0f} TL
 - Ticari Alacaklar: {bs.ticari_alacaklar:,.0f} TL
 - Stoklar: {bs.stoklar:,.0f} TL
 - Satışların Maliyeti: {bs.satislarin_maliyeti:,.0f} TL
 - Toplam Aktif: {bs.toplam_aktif:,.0f} TL
 
+Hesaplanmış değerler (bu değerleri kullan, kendin hesaplama):
+{hesaplanmis}
 İYİLEŞTİRİLMESİ GEREKEN RASYOLAR (her birinde "bir sonraki bant eşiği" verilmiştir):
 {rasyo_detay}
 YAZIM KURALLARI:
 - Her rasyo için ayrı bir başlık aç
 - Başlıkta rasyonun adını, mevcut değerini ve kazanılacak puanı yaz
 - Her rasyonun altında:
-  1. Neden bu kadar kötü olduğunu somut rakamlarla açıkla — likidite açığını yukarıdaki hesaplanan değerden al, kendi hesaplama yapma
+  1. Neden bu kadar kötü olduğunu somut rakamlarla açıkla — likidite açığı ve ek gereken varlık rakamlarını "Hesaplanmış değerler" bölümünden al, kendin hesaplama yapma
   2. Hedef olarak "bir sonraki bant eşiği"ni kullan — mükemmel bandı değil. Gerçekçi olmayan büyük hedefler yazma
   3. Buna ulaşmak için 3-4 somut, uygulanabilir adım ver
   4. Bu adımların ne kadar sürede sonuç vereceğini belirt
