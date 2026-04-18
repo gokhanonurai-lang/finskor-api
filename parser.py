@@ -69,11 +69,11 @@ class BalanceSheet:
     # GELİR TABLOSU
     net_satislar: float = 0.0            # 600 - 610
     satislarin_maliyeti: float = 0.0     # 620 + 621 + 622
-    pazarlama_giderleri: float = 0.0     # 630
-    genel_yonetim_giderleri: float = 0.0 # 631
-    arge_giderleri: float = 0.0          # 632
+    pazarlama_giderleri: float = 0.0     # 631
+    genel_yonetim_giderleri: float = 0.0 # 632
+    arge_giderleri: float = 0.0          # 630
     diger_faaliyet_gelirleri: float = 0.0     # 640–649
-    diger_faaliyet_giderleri: float = 0.0     # 650–657, 659 (658 hariç)
+    diger_faaliyet_giderleri: float = 0.0     # 633, 650–657, 659, 680–689 (658 hariç)
     enflasyon_duzeltme_zarari: float = 0.0    # 658 — nakit dışı, FAVÖK'e dahil değil
     finansman_gelirleri: float = 0.0     # 670–679
     finansman_giderleri: float = 0.0     # 660 + 661
@@ -326,12 +326,12 @@ ACCOUNT_MAP: list[tuple[list[str], str, int]] = [
     (["600", "601", "602"], "net_satislar", -1),    # alacak-normal → sign=-1
     (["610", "611", "612"], "net_satislar", -1),    # satış indirimleri: borç_bak × -1 = eksi satış
     (["620", "621", "622", "623"], "satislarin_maliyeti", 1),
-    (["630", "633"], "arge_giderleri", 1),
+    (["630"], "arge_giderleri", 1),
     (["631"], "pazarlama_giderleri", 1),
     (["632"], "genel_yonetim_giderleri", 1),
     (["640", "641", "642", "643", "644",
       "645", "646", "647", "648", "649"], "diger_faaliyet_gelirleri", -1),  # alacak-normal
-    (["650", "651", "652", "653", "654",
+    (["633", "650", "651", "652", "653", "654",
       "655", "656", "657",        "659",
       "680", "681", "682", "683", "684", "685",
       "686", "687", "688", "689"], "diger_faaliyet_giderleri", 1),
