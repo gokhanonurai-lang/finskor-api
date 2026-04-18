@@ -110,6 +110,7 @@ class TamRapor:
     zaman_cizelgesi: list[dict]
     skor_iyilestirme: str
     alt_hesap_analizi: list   # list[dict] — her dict: ana_hesap_kodu, ana_hesap_adi, analiz_metni, uyari_notu
+    finansal_tablo_yorumu: str
     disclaimer: str
 
 
@@ -1497,7 +1498,105 @@ zararlardan sorumlu tutulamaz.
 
 
 # ─────────────────────────────────────────────
-# 10. ANA FONKSİYON
+# 10. FİNANSAL TABLO YORUMU
+# ─────────────────────────────────────────────
+
+def _finansal_tablo_yorumu(bs, sektor: str = "ticaret") -> str:
+    """Gelir tablosu ve bilanço verilerini birlikte okuyup bankacı gözüyle yorum üretir."""
+    import anthropic, os
+
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    if not api_key:
+        return ""
+
+    ns = bs.net_satislar
+    if ns <= 0:
+        return ""
+
+    # Gelir tablosu oranları
+    brut_kar = ns - bs.satislarin_maliyeti
+    brut_mar = brut_kar / ns * 100
+    maliyet_oran = bs.satislarin_maliyeti / ns * 100
+    favok_mar = bs.favok / ns * 100
+    faaliyet_gider_oran = bs.faaliyet_giderleri / ns * 100
+    net_mar = bs.net_kar / ns * 100
+
+    # Bilanço oranları
+    ta = bs.toplam_aktif
+    toplam_borc = bs.kv_borclar + bs.uv_borclar
+    oz_oran = bs.ozkaynaklar / ta * 100 if ta else 0
+    borc_oran = toplam_borc / ta * 100 if ta else 0
+    donen_oran = bs.donen_varliklar / ta * 100 if ta else 0
+    duran_oran = bs.duran_varliklar / ta * 100 if ta else 0
+    kv_uv_oran = bs.kv_borclar / bs.uv_borclar if bs.uv_borclar > 0 else 0
+
+    sektor_label = {"ticaret": "ticaret", "uretim": "üretim", "hizmet": "hizmet"}.get(sektor, sektor)
+
+    prompt = f"""Sen bir kıdemli kredi analistisin. Aşağıdaki gelir tablosu ve bilanço verilerini birlikte oku.
+Bankacı gözüyle şu sırayla yorum yap:
+
+1. GELİR TABLOSU ORANLARI: Satış maliyetinin net satışa oranı, brüt kâr marjı,
+   FAVÖK marjı, faaliyet gider oranı, net kâr marjı — bu oranlar ne söylüyor?
+   Sektör için iyi mi kötü mü?
+
+2. BİLANÇO ORANLARI: Aktif yapısında dönen/duran dağılımı, pasif yapısında
+   özkaynak/borç dengesi, KV/UV borç dağılımı — bu yapı ne anlama geliyor?
+
+3. İKİ TABLO BİRLİKTE: Şirket kâr ediyor mu ama nakit üretemiyor mu?
+   Kâr ile nakit arasındaki fark neden? Bankacı bu tabloları birlikte
+   okuduğunda ne görür?
+
+Şirketiniz diye hitap et. Akıcı paragraf halinde yaz, her madde 2-3 cümle olsun.
+Rakamları ve oranları mutlaka kullan — soyut kalma.
+
+VERİLER:
+Sektör: {sektor_label}
+
+GELİR TABLOSU:
+- Net Satışlar: {ns:,.0f} TL
+- Satış Maliyeti: {bs.satislarin_maliyeti:,.0f} TL → oran: %{maliyet_oran:.1f}
+- Brüt Kâr: {brut_kar:,.0f} TL → brüt kâr marjı: %{brut_mar:.1f}
+- Faaliyet Giderleri: {bs.faaliyet_giderleri:,.0f} TL → oran: %{faaliyet_gider_oran:.1f}
+- FAVÖK: {bs.favok:,.0f} TL → FAVÖK marjı: %{favok_mar:.1f}
+- Enflasyon Düzeltme Zararı: {bs.enflasyon_duzeltme_zarari:,.0f} TL
+- Finansman Gelirleri: {bs.finansman_gelirleri:,.0f} TL
+- Finansman Giderleri: {bs.finansman_giderleri:,.0f} TL
+- Net Kâr: {bs.net_kar:,.0f} TL → net kâr marjı: %{net_mar:.1f}
+
+BİLANÇO:
+Aktif ({ta:,.0f} TL toplam):
+- Dönen Varlıklar: {bs.donen_varliklar:,.0f} TL → %{donen_oran:.1f}
+  • Nakit: {bs.nakit_ve_benzerleri:,.0f} TL
+  • Ticari Alacaklar: {bs.ticari_alacaklar:,.0f} TL
+  • Stoklar: {bs.stoklar:,.0f} TL
+- Duran Varlıklar: {bs.duran_varliklar:,.0f} TL → %{duran_oran:.1f}
+
+Pasif:
+- KV Borçlar: {bs.kv_borclar:,.0f} TL
+  • Banka Kredileri (KV): {bs.banka_kredileri_kv:,.0f} TL
+  • Ticari Borçlar: {bs.ticari_borclar_kv:,.0f} TL
+- UV Borçlar: {bs.uv_borclar:,.0f} TL
+  • Banka Kredileri (UV): {bs.banka_kredileri_uv:,.0f} TL
+- Özkaynaklar: {bs.ozkaynaklar:,.0f} TL → %{oz_oran:.1f}
+- Toplam Borç: {toplam_borc:,.0f} TL → %{borc_oran:.1f}
+- KV/UV Borç Oranı: {kv_uv_oran:.2f}x
+
+Yanıtı sadece üç numaralı paragraf halinde yaz. Başlık ekleme."""
+
+    try:
+        client = anthropic.Anthropic(api_key=api_key)
+        msg = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=900,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        return msg.content[0].text.strip()
+    except Exception as e:
+        logger.warning(f"_finansal_tablo_yorumu hatası: {e}")
+        return ""
+
+
+# 11. ANA FONKSİYON
 # ─────────────────────────────────────────────
 
 def rapor_olustur(
@@ -1546,5 +1645,6 @@ def rapor_olustur(
         zaman_cizelgesi=_zaman_cizelgesi(skor_sonuc, senaryolar),
         skor_iyilestirme=_potansiyel_raporu(skor_sonuc, bs),
         alt_hesap_analizi=_alt_hesap_analizi(bs),
+        finansal_tablo_yorumu=_finansal_tablo_yorumu(bs, sektor),
         disclaimer=DISCLAIMER,
     )

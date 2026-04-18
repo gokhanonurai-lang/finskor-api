@@ -293,6 +293,7 @@ async def analyze(
                 "dikkat_edilecekler": list(rapor.banka_hazirlik.dikkat_edilecekler),
             },
             "alt_hesap_analizi": rapor.alt_hesap_analizi,
+            "finansal_tablo_yorumu": rapor.finansal_tablo_yorumu,
             "parse_method": bs.parse_method,
             "match_rate": round(bs.match_rate, 3),
             "warnings": bs.warnings,
