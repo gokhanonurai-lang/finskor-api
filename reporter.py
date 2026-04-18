@@ -464,6 +464,7 @@ def _kredi_turu_oneri(bs, skor_sonuc: "SkorSonuc", sektor: str) -> KrediTuruOner
 
 def _potansiyel_raporu(skor_sonuc: "SkorSonuc", bs) -> str:
     import anthropic, os
+    from scorer import RASYO_TANIMLARI, _bant_bul
 
     kotu_zayif = [
         r for r in skor_sonuc.rasyolar
@@ -472,37 +473,64 @@ def _potansiyel_raporu(skor_sonuc: "SkorSonuc", bs) -> str:
     if not kotu_zayif:
         return ""
 
-    toplam_aktif = bs.toplam_aktif or 1
-    kayip_puan = sum(r.max_puan - r.puan for r in kotu_zayif)
+    kayip_puan  = sum(r.max_puan - r.puan for r in kotu_zayif)
     mevcut_skor = skor_sonuc.skor
     maksimum_skor = min(100, mevcut_skor + kayip_puan)
+
+    # ── Her rasyo için bir sonraki bant eşiğini hesapla ──
+    rasyo_meta = {t["id"]: t for t in RASYO_TANIMLARI}
+    sektor = getattr(bs, "sektor", "ticaret") or "ticaret"
 
     rasyo_detay = ""
     for r in kotu_zayif:
         kayip = r.max_puan - r.puan
-        rasyo_detay += f"- {r.ad}: {r.deger_fmt} (bant: {r.bant}, kayıp puan: {kayip}/{r.max_puan})\n"
+        rid   = getattr(r, "id", "")
+        t     = rasyo_meta.get(rid)
+        esik_notu = ""
+        if t:
+            esikler_tuple = t["esikler"].get(sektor) or t["esikler"].get("ticaret")
+            if esikler_tuple:
+                m, i, z = esikler_tuple
+                if t["yon"] == "yuksek_iyi":
+                    sonraki = z if r.bant == "kotu" else i
+                else:  # dusuk_iyi
+                    sonraki = z if r.bant == "kotu" else i
+                esik_notu = f", bir sonraki bant eşiği: {sonraki:.2f}"
+        rasyo_detay += (
+            f"- {r.ad}: {r.deger_fmt} "
+            f"(bant: {r.bant}, kayıp puan: {kayip}/{r.max_puan}{esik_notu})\n"
+        )
 
-    prompt = f"""Sen deneyimli bir Türk bankacı ve finansal danışmansın. Aşağıdaki firmaya özel verilerle, firmanın finansal skorunu maksimuma çıkarması için detaylı bir yol haritası yaz. Türkçe yaz.
+    # ── Likidite açığı: KV Borçlar - Dönen Varlıklar ──
+    likidite_acigi = bs.kv_borclar - bs.donen_varliklar
+    likidite_satiri = (
+        f"- Likidite Açığı (KV Borçlar − Dönen Varlıklar): {likidite_acigi:,.0f} TL\n"
+        if likidite_acigi > 0 else
+        f"- Dönen Varlıklar KV Borçlardan {abs(likidite_acigi):,.0f} TL fazla (pozitif likidite)\n"
+    )
+
+    prompt = f"""Sen deneyimli bir Türk bankacı ve finansal danışmansın. Aşağıdaki firmaya özel verilerle, firmanın finansal skorunu iyileştirmesi için detaylı bir yol haritası yaz. Türkçe yaz.
 
 FİRMA VERİLERİ:
 - Mevcut Skor: {mevcut_skor}/100
 - Senaryo ile Ulaşılabilir: {min(100, mevcut_skor + 9)} (bilanço aksiyonlarıyla)
 - Operasyonel İyileştirmeyle Maksimum: {maksimum_skor}/100
-- Net Satışlar: {bs.net_satislar:,.0f} TL
+- KV Borçlar: {bs.kv_borclar:,.0f} TL
+- Dönen Varlıklar: {bs.donen_varliklar:,.0f} TL
+{likidite_satiri}- Net Satışlar: {bs.net_satislar:,.0f} TL
 - Ticari Alacaklar: {bs.ticari_alacaklar:,.0f} TL
 - Stoklar: {bs.stoklar:,.0f} TL
 - Satışların Maliyeti: {bs.satislarin_maliyeti:,.0f} TL
 - Toplam Aktif: {bs.toplam_aktif:,.0f} TL
 
-İYİLEŞTİRİLMESİ GEREKEN RASYOLAR:
+İYİLEŞTİRİLMESİ GEREKEN RASYOLAR (her birinde "bir sonraki bant eşiği" verilmiştir):
 {rasyo_detay}
-
 YAZIM KURALLARI:
 - Her rasyo için ayrı bir başlık aç
 - Başlıkta rasyonun adını, mevcut değerini ve kazanılacak puanı yaz
 - Her rasyonun altında:
-  1. Neden bu kadar kötü olduğunu somut rakamlarla açıkla
-  2. Mükemmele çıkmak için hangi rakama ulaşması gerektiğini hesapla
+  1. Neden bu kadar kötü olduğunu somut rakamlarla açıkla — likidite açığını yukarıdaki hesaplanan değerden al, kendi hesaplama yapma
+  2. Hedef olarak "bir sonraki bant eşiği"ni kullan — mükemmel bandı değil. Gerçekçi olmayan büyük hedefler yazma
   3. Buna ulaşmak için 3-4 somut, uygulanabilir adım ver
   4. Bu adımların ne kadar sürede sonuç vereceğini belirt
 - Bankacı gözüyle yaz — teknik ama anlaşılır
@@ -516,7 +544,6 @@ YAZIM KURALLARI:
   * "kredi verilmez" yerine "kredi onayı zorlaşabilir" yaz
   * Her zaman tahmini/algoritmik analiz olduğunu hissettir"""
 
-    import anthropic, os
     client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
     try:
         message = _claude_call(client, "claude-sonnet-4-20250514", 6000, [{"role": "user", "content": prompt}])
