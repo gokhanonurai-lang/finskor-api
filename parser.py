@@ -72,8 +72,9 @@ class BalanceSheet:
     pazarlama_giderleri: float = 0.0     # 630
     genel_yonetim_giderleri: float = 0.0 # 631
     arge_giderleri: float = 0.0          # 632
-    diger_faaliyet_gelirleri: float = 0.0 # 640–649
-    diger_faaliyet_giderleri: float = 0.0# 650–659
+    diger_faaliyet_gelirleri: float = 0.0     # 640–649
+    diger_faaliyet_giderleri: float = 0.0     # 650–657, 659 (658 hariç)
+    enflasyon_duzeltme_zarari: float = 0.0    # 658 — nakit dışı, FAVÖK'e dahil değil
     finansman_gelirleri: float = 0.0     # 670–679
     finansman_giderleri: float = 0.0     # 660 + 661
     vergi_oncesi_kar: float = 0.0        # 690 (hesaplanır)
@@ -326,9 +327,10 @@ ACCOUNT_MAP: list[tuple[list[str], str, int]] = [
     (["640", "641", "642", "643", "644",
       "645", "646", "647", "648", "649"], "diger_faaliyet_gelirleri", -1),  # alacak-normal
     (["650", "651", "652", "653", "654",
-      "655", "656", "657", "658", "659",
+      "655", "656", "657",        "659",
       "680", "681", "682", "683", "684", "685",
       "686", "687", "688", "689"], "diger_faaliyet_giderleri", 1),
+    (["658"], "enflasyon_duzeltme_zarari", 1),  # nakit dışı — FAVÖK dışında tutulur
     (["660", "661"], "finansman_giderleri", 1),
     (["670", "671", "672", "673", "674",
       "675", "676", "677", "678", "679"], "finansman_gelirleri", -1),      # alacak-normal
