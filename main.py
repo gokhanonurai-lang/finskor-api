@@ -151,18 +151,33 @@ async def analyze(
         firma_ozet = {
             "sirket_adi": firma_adi,
             "sektor": sektor,
-            "toplam_aktif": round(bs.toplam_aktif),
+            # Gelir tablosu
             "net_satislar": round(bs.net_satislar),
+            "satis_maliyeti": round(bs.satislarin_maliyeti),
+            "faaliyet_giderleri": round(bs.faaliyet_giderleri),
             "favok": round(bs.favok),
+            "enflasyon_duzeltme_zarari": round(bs.enflasyon_duzeltme_zarari),
+            "finansman_gelirleri": round(bs.finansman_gelirleri),
+            "finansman_giderleri": round(bs.finansman_giderleri),
+            "vergi": round(bs.vergi_gideri),
             "net_kar": round(bs.net_kar),
+            # Aktif
+            "toplam_aktif": round(bs.toplam_aktif),
             "donen_varliklar": round(bs.donen_varliklar),
-            "duran_varliklar": round(bs.duran_varliklar),
-            "kv_borclar": round(bs.kv_borclar),
-            "uv_borclar": round(bs.uv_borclar),
-            "ozkaynaklar": round(bs.ozkaynaklar),
             "nakit": round(bs.nakit_ve_benzerleri),
-            "stoklar": round(bs.stoklar),
             "ticari_alacaklar": round(bs.ticari_alacaklar),
+            "stoklar": round(bs.stoklar),
+            "duran_varliklar": round(bs.duran_varliklar),
+            "maddi_duran_varlik": round(bs.maddi_duran_varliklar),
+            # Pasif
+            "kv_borclar": round(bs.kv_borclar),
+            "banka_kredileri_kv": round(bs.banka_kredileri_kv),
+            "ticari_borclar": round(bs.ticari_borclar_kv),
+            "uv_borclar": round(bs.uv_borclar),
+            "banka_kredileri_uv": round(bs.banka_kredileri_uv),
+            "ozkaynaklar": round(bs.ozkaynaklar),
+            "odenmis_sermaye": round(bs.odenmis_sermaye),
+            "gecmis_yil_karlari": round(bs.gecmis_yil_karlari),
         }
 
         # Rasyolar
