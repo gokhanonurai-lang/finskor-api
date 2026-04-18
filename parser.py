@@ -147,7 +147,12 @@ class BalanceSheet:
     @property
     def net_kar(self) -> float:
         # Gelir tablosu hesaplarından hesapla
-        hesaplanan = self.favok + self.finansman_gelirleri - self.finansman_giderleri - self.vergi_gideri
+        # Not: enflasyon_duzeltme_zarari (658) FAVÖK'e dahil değil, ayrıca çıkarılır
+        hesaplanan = (self.favok
+                      - self.enflasyon_duzeltme_zarari
+                      + self.finansman_gelirleri
+                      - self.finansman_giderleri
+                      - self.vergi_gideri)
         # Gelir tablosu yoksa (net_satislar=0) 590 hesabını kullan
         if self.net_satislar == 0 and self.donem_net_kari != 0:
             return self.donem_net_kari
@@ -866,6 +871,7 @@ def _normalize_bilanco(bs: BalanceSheet) -> BalanceSheet:
             bs.net_satislar - bs.satislarin_maliyeti
             - bs.faaliyet_giderleri
             + bs.diger_faaliyet_gelirleri - bs.diger_faaliyet_giderleri
+            - bs.enflasyon_duzeltme_zarari   # 658 FAVÖK'e dahil değil
             + bs.finansman_gelirleri - bs.finansman_giderleri
             - bs.vergi_gideri
         )
