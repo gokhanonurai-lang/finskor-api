@@ -205,6 +205,7 @@ ACCOUNT_MAP: list[tuple[list[str], str, int]] = [
     # ────────────────────────────────────────────────────────────────────────
 
     # NAKİT (Grup 10)
+    (["10"], "kasa", 1),                    # Sadece grup satırı varsa (sub-kod yoksa)
     (["100"], "kasa", 1),
     (["101"], "diger_hazir_degerler", 1),   # Alınan çekler — borç normal
     (["102"], "banka", 1),
@@ -608,6 +609,9 @@ def _read_excel(filepath):
     all_codes = set(r[0] for r in raw_rows)
     has_hierarchy = any("." in code for code in all_codes)
 
+    # Tüm ham kodlardaki rakam-only prefix'ler (çifte sayım tespiti için)
+    _all_digit_prefixes = {re.sub(r"\D", "", c.split(".")[0]) for c in all_codes}
+
     result = []
     skipped = 0
     for code, borc, alacak in raw_rows:
@@ -616,6 +620,12 @@ def _read_excel(filepath):
         if has_hierarchy and _is_parent_code(code, all_codes):
             skipped += 1
             continue
+        # 1-2 haneli grup kodu: aynı prefix'e sahip 3+ haneli alt kod varsa atla
+        _digits = re.sub(r"\D", "", code.split(".")[0])
+        if len(_digits) <= 2:
+            if any(p.startswith(_digits) and len(p) > len(_digits) for p in _all_digit_prefixes):
+                skipped += 1
+                continue
         root = _get_root3(code)
         if not root:
             continue
