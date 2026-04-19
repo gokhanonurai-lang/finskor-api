@@ -116,8 +116,9 @@ async def analyze(
     sektor: str = Form(default="ticaret"),
     sirket_adi: str = Form(default=""),
 ):
-    if sektor not in ("ticaret", "uretim", "hizmet"):
-        raise HTTPException(400, "sektor 'ticaret', 'uretim' veya 'hizmet' olmalı")
+    # Eski 3-sektör sistemi veya NACE kodu kabul edilir
+    if not sektor or len(sektor) > 20:
+        raise HTTPException(400, "Geçersiz sektör değeri")
     if not file.filename.endswith((".xlsx", ".xls")):
         raise HTTPException(400, "Sadece .xlsx veya .xls dosyaları kabul edilir")
     content_check = await file.read()
