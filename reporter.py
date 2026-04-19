@@ -23,6 +23,54 @@ logger = logging.getLogger(__name__)
 
 
 # ─────────────────────────────────────────────
+# SEKTÖR ETİKETİ HELPER
+# ─────────────────────────────────────────────
+
+def _sektor_label(sektor: str) -> str:
+    """
+    Sektör parametresini okunabilir Türkçe sektör adına çevirir.
+    "ticaret"/"uretim"/"hizmet" → Türkçe ad
+    NACE kodu ("63.11.08") → "Bilgi ve İletişim (NACE Bölüm J)"
+    """
+    _LEGACY = {
+        "ticaret": "Toptan ve Perakende Ticaret",
+        "uretim":  "İmalat",
+        "hizmet":  "Hizmet Sektörü",
+    }
+    if sektor in _LEGACY:
+        return _LEGACY[sektor]
+    _BOLUM_ADI = {
+        "A": "Tarım, Ormancılık ve Balıkçılık",
+        "B": "Madencilik ve Taş Ocakçılığı",
+        "C": "İmalat",
+        "D": "Elektrik, Gaz, Buhar ve İklimlendirme",
+        "E": "Su Temini, Atık Yönetimi",
+        "F": "İnşaat",
+        "G": "Toptan ve Perakende Ticaret",
+        "H": "Ulaştırma ve Depolama",
+        "I": "Konaklama ve Yiyecek Hizmetleri",
+        "J": "Bilgi ve İletişim",
+        "K": "Finans ve Sigortacılık",
+        "L": "Gayrimenkul Faaliyetleri",
+        "M": "Mesleki, Bilimsel ve Teknik Faaliyetler",
+        "N": "İdari ve Destek Hizmetleri",
+        "P": "Eğitim",
+        "Q": "İnsan Sağlığı ve Sosyal Hizmetler",
+        "R": "Kültür, Sanat, Eğlence ve Spor",
+        "S": "Diğer Hizmet Faaliyetleri",
+    }
+    try:
+        from analyzer import nace_to_bolum
+        bolum = nace_to_bolum(sektor)
+        ad = _BOLUM_ADI.get(bolum, "")
+        if ad:
+            return f"{ad} (NACE Bölüm {bolum})"
+    except Exception:
+        pass
+    return sektor
+
+
+# ─────────────────────────────────────────────
 # CLAUDE API RETRY WRAPPER (529 Overloaded)
 # ─────────────────────────────────────────────
 def _claude_call(client, model, max_tokens, messages_list, max_retries=6):
@@ -118,7 +166,7 @@ class TamRapor:
 # 2. YÖNETİCİ ÖZETİ
 # ─────────────────────────────────────────────
 
-def _yonetici_ozeti(skor_sonuc: "SkorSonuc", bs) -> str:
+def _yonetici_ozeti(skor_sonuc: "SkorSonuc", bs, sektor: str = "ticaret") -> str:
     import anthropic, os, re
 
     guclu = [(r.ad, r.deger_fmt) for r in skor_sonuc.rasyolar if r.bant in ("mukemmel", "iyi")]
@@ -138,6 +186,8 @@ def _yonetici_ozeti(skor_sonuc: "SkorSonuc", bs) -> str:
     toplam_aktif = bs.toplam_aktif or 1
 
     prompt = f"""Sen deneyimli bir Türk bankacısın. Aşağıdaki finansal verilere göre firma sahibine hitap eden, samimi ve net bir yönetici özeti yaz. Türkçe yaz.
+
+Firma sektörü: {_sektor_label(sektor)}. Tüm yorumlarını bu sektörün dinamiklerine, ortalama karlılık beklentilerine ve tipik risk profiline göre yap. Sektöre özgü olmayan genel yorumlardan kaçın.
 
 FİRMA FİNANSAL VERİLERİ:
 - Kredi Skoru: {skor_sonuc.skor}/100 ({skor_sonuc.harf} bandı)
@@ -463,7 +513,7 @@ def _kredi_turu_oneri(bs, skor_sonuc: "SkorSonuc", sektor: str) -> KrediTuruOner
 # ─────────────────────────────────────────────
 
 
-def _potansiyel_raporu(skor_sonuc: "SkorSonuc", bs) -> str:
+def _potansiyel_raporu(skor_sonuc: "SkorSonuc", bs, sektor: str = "ticaret") -> str:
     import anthropic, os
     from scorer import RASYO_TANIMLARI, _bant_bul
 
@@ -524,6 +574,8 @@ def _potansiyel_raporu(skor_sonuc: "SkorSonuc", bs) -> str:
         )
 
     prompt = f"""Sen deneyimli bir Türk bankacı ve finansal danışmansın. Aşağıdaki firmaya özel verilerle, firmanın finansal skorunu iyileştirmesi için detaylı bir yol haritası yaz. Türkçe yaz.
+
+Firma sektörü: {_sektor_label(sektor)}. Tüm yorumlarını bu sektörün dinamiklerine, ortalama karlılık beklentilerine ve tipik risk profiline göre yap. Sektöre özgü olmayan genel yorumlardan kaçın.
 
 FİRMA VERİLERİ:
 - Mevcut Skor: {mevcut_skor}/100
@@ -1530,7 +1582,7 @@ def _finansal_tablo_yorumu(bs, sektor: str = "ticaret") -> str:
     duran_oran = bs.duran_varliklar / ta * 100 if ta else 0
     kv_uv_oran = bs.kv_borclar / bs.uv_borclar if bs.uv_borclar > 0 else 0
 
-    sektor_label = {"ticaret": "ticaret", "uretim": "üretim", "hizmet": "hizmet"}.get(sektor, sektor)
+    sektor_label = _sektor_label(sektor)
 
     prompt = f"""Sen bir kıdemli kredi analistisin. Aşağıdaki gelir tablosu ve bilanço verilerini birlikte oku.
 Bankacı gözüyle şu sırayla yorum yap:
@@ -1586,8 +1638,8 @@ Yanıtı sadece üç numaralı paragraf halinde yaz. Başlık ekleme."""
     try:
         client = anthropic.Anthropic(api_key=api_key)
         msg = client.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=1500,
+            model="claude-sonnet-4-20250514",
+            max_tokens=2500,
             messages=[{"role": "user", "content": prompt}],
         )
         return msg.content[0].text.strip()
@@ -1631,8 +1683,8 @@ def rapor_olustur(
     return TamRapor(
         firma_adi=firma_adi,
         sektor=sektor,
-        yonetici_ozeti=_yonetici_ozeti(skor_sonuc, bs),
-        potansiyel_raporu=_potansiyel_raporu(skor_sonuc, bs),
+        yonetici_ozeti=_yonetici_ozeti(skor_sonuc, bs, sektor),
+        potansiyel_raporu=_potansiyel_raporu(skor_sonuc, bs, sektor),
         guclu_yonler=_guclu_yonler(skor_sonuc, analizler),
         zayif_yonler=_zayif_yonler(skor_sonuc, analizler),
         rasyo_analizleri=analizler,
@@ -1643,7 +1695,7 @@ def rapor_olustur(
         senaryolar=senaryolar,
         banka_hazirlik=_banka_hazirlik(skor_sonuc, bs),
         zaman_cizelgesi=_zaman_cizelgesi(skor_sonuc, senaryolar),
-        skor_iyilestirme=_potansiyel_raporu(skor_sonuc, bs),
+        skor_iyilestirme=_potansiyel_raporu(skor_sonuc, bs, sektor),
         alt_hesap_analizi=_alt_hesap_analizi(bs),
         finansal_tablo_yorumu=_finansal_tablo_yorumu(bs, sektor),
         disclaimer=DISCLAIMER,
