@@ -324,10 +324,11 @@ def _zayif_yonler(skor_sonuc: "SkorSonuc", analizler: list["RasyoAnaliz"]) -> li
     """
     import re
     zayif = []
-    analiz_dict = {a.rasyo_id: a for a in analizler}
+    # RasyoSonuc'ta id alanı yok — ad (display name) üzerinden eşleştir
+    analiz_dict = {a.ad: a for a in analizler}
 
-    # Güçlü yönlere giren rasyo id'leri — çakışmayı önlemek için
-    guclu_rasyo_idleri = {a.rasyo_id for a in analizler if a.karsilastirma == "iyi"}
+    # Güçlü yönlere giren rasyo adları — RasyoSonuc.ad ile eşleşir
+    guclu_rasyo_adlari = {a.ad for a in analizler if a.karsilastirma == "iyi"}
 
     # Kırmızı bayraklar en önce (rasyo filtresi uygulanmaz — bunlar ayrı bir kaynak)
     for b in skor_sonuc.kirmizi_bayraklar:
@@ -341,10 +342,9 @@ def _zayif_yonler(skor_sonuc: "SkorSonuc", analizler: list["RasyoAnaliz"]) -> li
     # Kötü bantlı rasyolar
     for r in skor_sonuc.rasyolar:
         if r.bant == "kotu":
-            rasyo_id = getattr(r, 'id', '')
-            if rasyo_id in guclu_rasyo_idleri:
+            if r.ad in guclu_rasyo_adlari:
                 continue
-            analiz = analiz_dict.get(rasyo_id)
+            analiz = analiz_dict.get(r.ad)
             iyilestir = analiz.nasil_iyilestirilir[:3] if analiz and analiz.nasil_iyilestirilir else []
             aciklama_k = analiz.ne_anlama_gelir if analiz else ""
             cumleler_k = re.split(r'(?<=[a-züöçşığıA-ZÜÖÇŞİĞI])\. ', aciklama_k)
@@ -362,10 +362,9 @@ def _zayif_yonler(skor_sonuc: "SkorSonuc", analizler: list["RasyoAnaliz"]) -> li
     # Zayıf bantlı rasyolar
     for r in skor_sonuc.rasyolar:
         if r.bant == "zayif":
-            rasyo_id = getattr(r, 'id', '')
-            if rasyo_id in guclu_rasyo_idleri:
+            if r.ad in guclu_rasyo_adlari:
                 continue
-            analiz = analiz_dict.get(rasyo_id)
+            analiz = analiz_dict.get(r.ad)
             iyilestir = analiz.nasil_iyilestirilir[:3] if analiz and analiz.nasil_iyilestirilir else []
             aciklama_z = analiz.ne_anlama_gelir if analiz else ""
             cumleler_z = re.split(r'(?<=[a-züöçşığıA-ZÜÖÇŞİĞI])\. ', aciklama_z)
@@ -540,7 +539,7 @@ def _potansiyel_raporu(skor_sonuc: "SkorSonuc", bs, sektor: str = "ticaret") -> 
 
     # ── Her rasyo için bir sonraki bant eşiğini hesapla ──
     rasyo_meta = {t["id"]: t for t in RASYO_TANIMLARI}
-    sektor = getattr(bs, "sektor", "ticaret") or "ticaret"
+    sektor = sektor or getattr(bs, "sektor", "ticaret") or "ticaret"
 
     rasyo_detay = ""
     for r in kotu_zayif:
@@ -1191,7 +1190,7 @@ _ALT_HESAP_ADLARI = {
 # Fix liste: her zaman dahil, kalem sayısına bakılmaksızın
 _FIX_LISTE = frozenset([
     "120", "150", "253", "254",
-    "300", "301", "320", "321",
+    "300", "301", "320", "321", "329", "340",
     "400", "401",
 ])
 
