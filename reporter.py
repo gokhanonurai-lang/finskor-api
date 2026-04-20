@@ -127,16 +127,17 @@ class KrediTuruOneri:
 class NakitAkisAnaliz:
     aylik_favok: float
     aylik_favok_fmt: str
-    mevcut_borc_servisi_aylik: float
+    mevcut_borc_servisi_aylik: float   # gerçek aylık faiz gideri
     mevcut_borc_servisi_fmt: str
-    favok_kullanim_orani: float       # mevcut borç / FAVÖK
-    yeni_kredi_taksiti_aylik: float   # limit tahminine göre
+    favok_kullanim_orani: float        # mevcut faiz / aylık FAVÖK (0–1 arası)
+    yeni_kredi_taksiti_aylik: float    # max karşılanabilir yeni kredi tutarı
     yeni_kredi_taksiti_fmt: str
-    toplam_borc_servisi_aylik: float
-    toplam_borc_servisi_fmt: str
-    toplam_favok_kullanim_orani: float
-    kapasite_degerlendirmesi: str     # "rahat" | "makul" | "riskli" | "kritik"
+    toplam_borc_servisi_aylik: float   # kullanılmıyor, 0
+    toplam_borc_servisi_fmt: str       # kullanılmıyor, ""
+    toplam_favok_kullanim_orani: float # kullanılmıyor, 0
+    kapasite_degerlendirmesi: str      # "çok rahat" | "rahat" | "dikkatli" | "zorlu"
     yorum: str
+    html: str = ""                     # ön-işlenmiş HTML görünümü
 
 
 @dataclass
@@ -623,91 +624,79 @@ YAZIM KURALLARI:
 
 def _nakit_akis_analiz(bs, skor_sonuc: "SkorSonuc") -> NakitAkisAnaliz:
     """
-    Aylık FAVÖK, mevcut borç servisi ve yeni kredi taksiti karşılaştırması.
+    Gerçek finansman giderlerinden aylık faiz yükü ve yeni kredi kapasitesi analizi.
     """
-    # Aylık FAVÖK — negatif olsa da olduğu gibi göster
-    aylik_favok = bs.favok / 12
-
-    # Mevcut borç servisi tahmini
-    # Finansal borçların ortalama 36 ay vadede ödendiğini varsay
-    VADE_AY = 36
-    FAIZ_ORANI_AYLIK = 0.035  # %3.5 aylık — yaklaşık cari TL kredi faizi
-    fb = bs.finansal_borclar
-    if fb > 0:
-        # Anuitet formülü: taksit = borç × (r × (1+r)^n) / ((1+r)^n - 1)
-        r = FAIZ_ORANI_AYLIK
-        n = VADE_AY
-        mevcut_taksit = fb * (r * (1+r)**n) / ((1+r)**n - 1)
-    else:
-        mevcut_taksit = 0
-
-    # Kullanılabilir yeni kredi limiti tahmini
-    carpan_map = {"AAA": 3.0, "AA": 2.5, "A": 2.0, "BBB": 1.5, "BB": 1.0}
-    carpan = carpan_map.get(skor_sonuc.harf, 1.0)
-    yeni_limit = max(0, bs.favok * carpan - fb)
-
-    # Yeni kredi taksiti
-    if yeni_limit > 0:
-        yeni_taksit = yeni_limit * (FAIZ_ORANI_AYLIK * (1+FAIZ_ORANI_AYLIK)**VADE_AY) / \
-                      ((1+FAIZ_ORANI_AYLIK)**VADE_AY - 1)
-    else:
-        yeni_taksit = 0
-
-    toplam_taksit = mevcut_taksit + yeni_taksit
-
-    # Kapasite değerlendirmesi
-    if aylik_favok <= 0:
-        kapasite = "kritik"
-        yorum = "FAVÖK negatif — borç servisi karşılanamıyor."
-        mevcut_oran = 0
-        toplam_oran = 0
-    elif aylik_favok > 0:
-        mevcut_oran = mevcut_taksit / aylik_favok
-        toplam_oran = toplam_taksit / aylik_favok
-        kullanim_oran = mevcut_oran
-        if kullanim_oran <= 0.40:
-            kapasite = "rahat"
-            yorum = (
-                f"Aylık işletme kârınızın ({aylik_favok:,.0f} TL) yalnızca "
-                f"{mevcut_oran*100:.0f}%'i borç servisine gidecek. "
-                f"Kredi geri ödemesinde rahat bir kapasiteniz var."
-            )
-        elif kullanim_oran <= 0.60:
-            kapasite = "makul"
-            yorum = (
-                f"Aylık işletme kârınızın {mevcut_oran*100:.0f}%'i borç servisine gidecek. "
-                f"Yönetilebilir bir yük ancak beklenmedik gider durumunda dikkatli olunmalı."
-            )
-        elif kullanim_oran <= 0.80:
-            kapasite = "riskli"
-            yorum = (
-                f"Aylık işletme kârınızın {mevcut_oran*100:.0f}%'i borç servisine gidecek. "
-                f"Bu yüksek bir oran. Satışlarda küçük bir düşüş ödeme güçlüğü yaratabilir."
-            )
-        else:
-            kapasite = "kritik"
-            yorum = (
-                f"Aylık işletme kârınızın {mevcut_oran*100:.0f}%'i borç servisine gidecek — "
-                f"kritik seviye. Bu krediyi geri ödemek çok güçtür. "
-                f"Daha düşük limit veya FAVÖK artışı bu göstergeyi olumlu etkileyebilir."
-            )
-
-    def fmt_tl(v):
+    def fmt_tl(v: float) -> str:
         return f"{v:,.0f} TL"
 
+    favok_aylik = bs.favok / 12
+    mevcut_faiz_aylik = bs.finansman_giderleri / 12
+
+    if favok_aylik <= 0:
+        mevcut_oran = 0.0
+        max_yeni_kredi = 0.0
+        kapasite = "zorlu"
+        ikon = "⚠"
+        yorum = "FAVÖK negatif — faiz yükü karşılanamıyor. Mevcut borç yapısı acil gözden geçirilmeli."
+    else:
+        mevcut_oran = (mevcut_faiz_aylik / favok_aylik) * 100
+        max_yeni_kredi = (favok_aylik * 0.40) / 0.035
+
+        if mevcut_oran <= 15:
+            kapasite = "çok rahat"
+            ikon = "✓"
+            yorum = f"Mevcut faiz yükünüz çok düşük, FAVÖK'ünüzün yalnızca %{mevcut_oran:.1f}'i. {max_yeni_kredi:,.0f} TL'ye kadar yeni kredi rahatlıkla karşılanabilir."
+        elif mevcut_oran <= 30:
+            kapasite = "rahat"
+            ikon = "✓"
+            yorum = f"Faiz yükünüz makul seviyede, FAVÖK'ünüzün %{mevcut_oran:.1f}'i. {max_yeni_kredi:,.0f} TL'ye kadar yeni kredi karşılanabilir."
+        elif mevcut_oran <= 50:
+            kapasite = "dikkatli"
+            ikon = "⚠"
+            yorum = f"Faiz yükünüz FAVÖK'ünüzün %{mevcut_oran:.1f}'i — dikkatli olunmalı. Yeni kredi almadan önce mevcut yükü azaltmanız önerilir. Rahat karşılanabilir maksimum: {max_yeni_kredi:,.0f} TL."
+        else:
+            kapasite = "zorlu"
+            ikon = "⚠"
+            yorum = f"Faiz yükünüz yüksek, FAVÖK'ünüzün %{mevcut_oran:.1f}'i. Yeni kredi kapasitesi sınırlı, önce mevcut borç yapısı iyileştirilmeli."
+
+    html = (
+        f'<div class="space-y-2 text-sm">'
+        f'<div class="flex justify-between">'
+        f'<span class="text-gray-500">Aylık FAVÖK</span>'
+        f'<span class="font-medium">{fmt_tl(favok_aylik)}</span>'
+        f'</div>'
+        f'<div class="flex justify-between">'
+        f'<span class="text-gray-500">Mevcut aylık faiz yükü</span>'
+        f'<span class="font-medium">{fmt_tl(mevcut_faiz_aylik)}'
+        f'<span class="text-xs text-gray-400 ml-1">'
+        f"(FAVÖK'ün %{mevcut_oran:.1f}'i — {kapasite})"
+        f'</span></span>'
+        f'</div>'
+        f'<div class="flex justify-between">'
+        f'<span class="text-gray-500">Rahat karşılanabilir maks. yeni kredi</span>'
+        f'<span class="font-medium">~{fmt_tl(max_yeni_kredi)}'
+        f'<span class="text-xs text-gray-400 ml-1">'
+        f"(aylık %3.5 faiz, FAVÖK'ün %40 eşiğinde)"
+        f'</span></span>'
+        f'</div>'
+        f'<div class="mt-3 text-xs text-gray-600">{ikon} {yorum}</div>'
+        f'</div>'
+    )
+
     return NakitAkisAnaliz(
-        aylik_favok=aylik_favok,
-        aylik_favok_fmt=fmt_tl(aylik_favok),
-        mevcut_borc_servisi_aylik=mevcut_taksit,
-        mevcut_borc_servisi_fmt=fmt_tl(mevcut_taksit),
-        favok_kullanim_orani=mevcut_oran,
-        yeni_kredi_taksiti_aylik=yeni_taksit,
-        yeni_kredi_taksiti_fmt=fmt_tl(yeni_taksit),
-        toplam_borc_servisi_aylik=toplam_taksit,
-        toplam_borc_servisi_fmt=fmt_tl(toplam_taksit),
-        toplam_favok_kullanim_orani=toplam_oran,
+        aylik_favok=favok_aylik,
+        aylik_favok_fmt=fmt_tl(favok_aylik),
+        mevcut_borc_servisi_aylik=mevcut_faiz_aylik,
+        mevcut_borc_servisi_fmt=fmt_tl(mevcut_faiz_aylik),
+        favok_kullanim_orani=mevcut_oran / 100,
+        yeni_kredi_taksiti_aylik=max_yeni_kredi,
+        yeni_kredi_taksiti_fmt=fmt_tl(max_yeni_kredi),
+        toplam_borc_servisi_aylik=0,
+        toplam_borc_servisi_fmt="",
+        toplam_favok_kullanim_orani=0,
         kapasite_degerlendirmesi=kapasite,
         yorum=yorum,
+        html=html,
     )
 
 

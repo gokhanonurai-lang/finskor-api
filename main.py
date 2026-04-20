@@ -242,6 +242,7 @@ async def analyze(
             "toplam_favok_kullanim_orani": round(na.toplam_favok_kullanim_orani * 100, 1),
             "kapasite_degerlendirmesi": na.kapasite_degerlendirmesi,
             "yorum": na.yorum,
+            "html": na.html,
         } if na else None
 
         # Zaman çizelgesi
