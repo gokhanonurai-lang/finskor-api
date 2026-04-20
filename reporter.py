@@ -202,6 +202,7 @@ HESAP DETAYLARI (bankacı gözüyle yorumlanacak):
 DÖNEN VARLIKLAR:
 - Kasa (100): {bs.kasa:,.0f} TL (%{bs.kasa/toplam_aktif*100:.1f} aktif)
 - Banka (102): {bs.banka:,.0f} TL (%{bs.banka/toplam_aktif*100:.1f} aktif)
+- Toplam Nakit (100+102+108): {bs.nakit_ve_benzerleri:,.0f} TL (%{bs.nakit_ve_benzerleri/toplam_aktif*100:.1f} aktif)
 - Ticari Alacaklar (120-121): {bs.ticari_alacaklar:,.0f} TL (%{bs.ticari_alacaklar/toplam_aktif*100:.1f} aktif)
 - Stoklar (150-158): {bs.stoklar:,.0f} TL (%{bs.stoklar/toplam_aktif*100:.1f} aktif)
 - Diğer Dönen Varlıklar: {bs.diger_donen_varliklar:,.0f} TL
@@ -625,7 +626,7 @@ YAZIM KURALLARI:
 - Başlıkta rasyonun adını, mevcut değerini ve kazanılacak puanı yaz
 - Her rasyonun altında:
   1. Neden bu kadar kötü olduğunu somut rakamlarla açıkla — likidite açığı ve ek gereken varlık rakamlarını "Hesaplanmış değerler" bölümünden al, kendin hesaplama yapma
-  2. Hedef olarak "bir sonraki bant eşiği"ni kullan — mükemmel bandı değil. Gerçekçi olmayan büyük hedefler yazma
+  2. Hedef olarak "bir sonraki bant eşiği"ni kullan — mükemmel bandı değil. Gerçekçi olmayan büyük hedefler yazma. ÖNEMLİ: Yukarıda "hedef eşik" olarak verilen rakamı aynen kullan, kendi sektör benchmark rakamı üretme. Örneğin ROE için hedef eşik %3.4 olarak verilmişse %3.4 yaz, %12-15 gibi kendi tahminini yazma
   3. Buna ulaşmak için 3-4 somut, uygulanabilir adım ver
   4. Bu adımların ne kadar sürede sonuç vereceğini belirt
 - Bankacı gözüyle yaz — teknik ama anlaşılır
@@ -1083,64 +1084,51 @@ def _zaman_cizelgesi(skor_sonuc: "SkorSonuc", senaryolar: list[SenaryoSonuc]) ->
     """
     cizelge = []
     bayraklar = {b.kod for b in skor_sonuc.kirmizi_bayraklar}
+    kotu_zayif_ids = {getattr(r, 'id', '') for r in skor_sonuc.rasyolar if r.bant in ("kotu", "zayif")}
 
     # Hemen yapılabilecekler (1–4 hafta)
     hemen = []
-    if "ortaklar_cari_siskinligi" in bayraklar:
-        hemen.append("Ortaklar cari hesabını sermayeye ekle (muhasebe kaydı yeterli, maliyet sıfır)")
-    if any(r.bant == "kotu" for r in skor_sonuc.rasyolar if r.kategori == "likidite"):
+    if "likidite_krizi" in bayraklar:
         hemen.append("Vadesi geçmiş alacaklar için acil tahsilat kampanyası başlat")
     hemen.append("Findeks raporu al, kişisel kredi sicilini kontrol et")
     hemen.append("Vergi ve SGK borcu varsa öde veya yapılandır")
 
-    if hemen:
-        cizelge.append({
-            "donem": "Hemen (1–4 hafta)",
-            "aksiyonlar": hemen,
-            "beklenen_etki": "Kırmızı bayrakların temizlenmesi, banka başvurusuna hazırlık",
-        })
+    cizelge.append({
+        "donem": "Hemen (1–4 hafta)",
+        "aksiyonlar": hemen,
+        "beklenen_etki": "Kırmızı bayrakların temizlenmesi, banka başvurusuna hazırlık",
+    })
 
     # Kısa vadeli (1–3 ay)
     kisa = []
-    for r in skor_sonuc.rasyolar:
-        if r.bant in ("kotu", "zayif") and r.kategori in ("likidite", "faaliyet"):
-            rid = getattr(r, 'id', '')
-            if rid == "stok_devir":
-                kisa.append("Yavaş dönen stokları indirimli sat, nakde çevir")
-            elif rid == "alacak_tahsil_suresi":
-                kisa.append("Alacak tahsilat sürecini sıkılaştır, vade politikasını güncelle")
-            elif rid == "nakit_donusum_suresi":
-                kisa.append("Tedarikçilerle ödeme vadesi uzatma müzakeresi yap")
+    if "cari_oran" in kotu_zayif_ids:
+        kisa.append("Kısa vadeli borçların bir kısmını uzun vadeye çevir, dönen varlıkları artır")
+    if "asit_test" in kotu_zayif_ids:
+        kisa.append("Alacak tahsilatını hızlandır, stok seviyesini düşür")
+    if "nakit_oran" in kotu_zayif_ids:
+        kisa.append("Nakit rezerv oluştur, vadesi gelen alacakları öncelikli tahsil et")
+    if "stok_devir" in kotu_zayif_ids:
+        kisa.append("Yavaş dönen stokları indirimli sat, nakde çevir")
+    if "alacak_tahsil_suresi" in kotu_zayif_ids:
+        kisa.append("Alacak tahsilat sürecini sıkılaştır, vade politikasını güncelle")
     kisa.append("Banka başvurusu için gerekli belgeler toparla")
 
-    if skor_sonuc.skor >= 55:
-        kisa.append("Seçilen 1–2 bankaya ön görüşme talebi ilet")
-
-    if kisa:
-        cizelge.append({
-            "donem": "Kısa vadeli (1–3 ay)",
-            "aksiyonlar": list(dict.fromkeys(kisa)),  # tekrar temizle
-            "beklenen_etki": "Likidite iyileşmesi, banka görüşmelerine hazırlık",
-        })
+    cizelge.append({
+        "donem": "Kısa vadeli (1–3 ay)",
+        "aksiyonlar": list(dict.fromkeys(kisa)),
+        "beklenen_etki": "Likidite iyileşmesi, banka görüşmelerine hazırlık",
+    })
 
     # Orta vadeli (3–6 ay)
     orta = []
-    for r in skor_sonuc.rasyolar:
-        if r.bant in ("kotu", "zayif") and r.kategori == "sermaye":
-            rid = getattr(r, 'id', '')
-            if rid == "kv_borc_orani":
-                orta.append("Kısa vadeli kredileri uzun vadeye çevirmek için banka müzakeresi")
-            elif rid == "borc_ozkaynak":
-                orta.append("Kâr dağıtımı yapmayarak özkaynak birikimini hızlandır")
-
-    # En yüksek etkili senaryo bandı iyileştirme
-    if senaryolar:
-        en_iyi = senaryolar[0]
-        if en_iyi.skor_delta >= 5:
-            orta.append(
-                f"'{en_iyi.aciklama}' aksiyonunu uygula → "
-                f"tahmini +{en_iyi.skor_delta} puan, {en_iyi.yeni_harf} bandı"
-            )
+    if "kv_borc_orani" in kotu_zayif_ids:
+        orta.append("Kısa vadeli kredileri uzun vadeye çevirmek için banka müzakeresi")
+    if "borc_ozkaynak" in kotu_zayif_ids:
+        orta.append("Kâr dağıtımı yapmayarak özkaynak birikimi sağla")
+    if "roe" in kotu_zayif_ids:
+        orta.append("Net kâr marjını artırmak için fiyatlandırma ve maliyet stratejisini gözden geçir")
+    if "roa" in kotu_zayif_ids:
+        orta.append("Atıl varlıkları sat veya daha verimli kullan")
 
     if orta:
         cizelge.append({
@@ -1150,18 +1138,14 @@ def _zaman_cizelgesi(skor_sonuc: "SkorSonuc", senaryolar: list[SenaryoSonuc]) ->
         })
 
     # Uzun vadeli (6–12 ay)
-    uzun = [
-        "Düzenli aylık finansal raporlama sistemi kur",
-        "Bir sonraki dönem için daha yüksek skor hedefi belirle",
-        "Banka ilişkisini aktif tut — limit artırım başvurusu değerlendir",
-    ]
-
-    if skor_sonuc.skor < 65:
-        uzun.insert(0, "Finansal yapı iyileştirmesi tamamlandıktan sonra banka başvurusu yap")
-
     cizelge.append({
         "donem": "Uzun vadeli (6–12 ay)",
-        "aksiyonlar": uzun,
+        "aksiyonlar": [
+            "Finansal yapı iyileştirmesi tamamlandıktan sonra banka başvurusu yap",
+            "Düzenli aylık finansal raporlama sistemi kur",
+            "Bir sonraki dönem için daha yüksek skor hedefi belirle",
+            "Banka ilişkisini aktif tut — limit artırım başvurusu değerlendir",
+        ],
         "beklenen_etki": "Sürdürülebilir finansal sağlık, düşük maliyetli kredi erişimi",
     })
 
