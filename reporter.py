@@ -310,7 +310,7 @@ def _guclu_yonler(skor_sonuc: "SkorSonuc", analizler: list["RasyoAnaliz"]) -> li
             "verimli kullanılıyor."
         )
 
-    return guclu[:6] if guclu else ["Mevcut finansal verilere göre öne çıkan güçlü alan tespit edilemedi."]
+    return guclu[:19] if guclu else ["Mevcut finansal verilere göre öne çıkan güçlü alan tespit edilemedi."]
 
 
 # ─────────────────────────────────────────────
