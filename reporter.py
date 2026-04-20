@@ -525,7 +525,7 @@ def _kredi_turu_oneri(bs, skor_sonuc: "SkorSonuc", sektor: str) -> KrediTuruOner
 
 def _potansiyel_raporu(skor_sonuc: "SkorSonuc", bs, sektor: str = "ticaret") -> str:
     import anthropic, os
-    from scorer import RASYO_TANIMLARI, _bant_bul
+    from scorer import RASYO_TANIMLARI, _bant_bul, _sektor_to_bolum
 
     kotu_zayif = [
         r for r in skor_sonuc.rasyolar
@@ -538,26 +538,44 @@ def _potansiyel_raporu(skor_sonuc: "SkorSonuc", bs, sektor: str = "ticaret") -> 
     mevcut_skor = skor_sonuc.skor
     maksimum_skor = min(100, mevcut_skor + kayip_puan)
 
-    # ── Her rasyo için bir sonraki bant eşiğini hesapla ──
-    rasyo_meta = {t["id"]: t for t in RASYO_TANIMLARI}
+    # ── Her rasyo için sektör ortalaması + bir sonraki bant eşiği ──
+    from analyzer import nace_to_bolum, NACE_BOLUM_ORT
+    # RasyoSonuc'ta id alanı yok — ad üzerinden lookup
+    rasyo_meta_by_ad = {t["ad"]: t for t in RASYO_TANIMLARI}
+    bolum           = nace_to_bolum(sektor)
+    sektor_ort_dict = NACE_BOLUM_ORT.get(bolum, NACE_BOLUM_ORT["G"])
+
+    _YUZDE_IDS = {"brut_kar_marji", "favok_marji", "faaliyet_gider_orani",
+                  "net_kar_marji", "roe", "roa", "finansman_gider_orani",
+                  "kv_borc_orani", "ortaklar_cari_orani"}
+    _GUN_IDS   = {"alacak_tahsil_suresi", "nakit_donusum_suresi"}
+
+    def _fmt_ort(rid: str, val: float) -> str:
+        if rid in _YUZDE_IDS: return f"%{val * 100:.1f}"
+        if rid in _GUN_IDS:   return f"{val:.0f} gün"
+        return f"{val:.2f}"
+
     rasyo_detay = ""
     for r in kotu_zayif:
-        kayip = r.max_puan - r.puan
-        rid   = getattr(r, "id", "")
-        t     = rasyo_meta.get(rid)
+        kayip    = r.max_puan - r.puan
+        t        = rasyo_meta_by_ad.get(r.ad)
+        ort_notu = ""
         esik_notu = ""
         if t:
-            esikler_tuple = t["esikler"].get(sektor) or t["esikler"].get("ticaret")
+            rid = t["id"]
+            ort = sektor_ort_dict.get(rid)
+            if ort is not None:
+                ort_notu = f", sektör ort: {_fmt_ort(rid, ort)}"
+            bolum_esik    = _sektor_to_bolum(sektor)
+            esikler_tuple = t["esikler"].get(bolum_esik) or t["esikler"].get("ticaret")
             if esikler_tuple:
                 m, i, z = esikler_tuple
-                if t["yon"] == "yuksek_iyi":
-                    sonraki = z if r.bant == "kotu" else i
-                else:  # dusuk_iyi
-                    sonraki = z if r.bant == "kotu" else i
-                esik_notu = f", bir sonraki bant eşiği: {sonraki:.2f}"
+                sonraki   = z if r.bant == "kotu" else i
+                esik_notu = f", hedef eşik: {_fmt_ort(rid, sonraki)}"
         rasyo_detay += (
-            f"- {r.ad}: {r.deger_fmt} "
-            f"(bant: {r.bant}, kayıp puan: {kayip}/{r.max_puan}{esik_notu})\n"
+            f"- {r.ad}: {r.deger_fmt}"
+            f"{ort_notu}{esik_notu}"
+            f" (bant: {r.bant}, kayıp puan: {kayip}/{r.max_puan})\n"
         )
 
     # ── Hesaplanmış likidite değerleri ──

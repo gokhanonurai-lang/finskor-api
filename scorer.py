@@ -8,7 +8,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Literal
 
-Sektor = Literal["ticaret", "uretim", "hizmet"]
+Sektor = str  # "ticaret"/"uretim"/"hizmet" veya NACE kodu ("23.63.01")
 
 
 # ─────────────────────────────────────────────
@@ -335,6 +335,55 @@ RASYO_TANIMLARI = [
         },
     },
 ]
+
+# ─────────────────────────────────────────────
+# NACE BÖLÜM EŞİKLERİ — dinamik türetme
+# ─────────────────────────────────────────────
+
+_LEGACY_TO_BOLUM = {"ticaret": "G", "uretim": "C", "hizmet": "M"}
+
+
+def _sektor_to_bolum(sektor: str) -> str:
+    """'ticaret'/'uretim'/'hizmet' veya NACE kodu → NACE bölüm harfi."""
+    if sektor in _LEGACY_TO_BOLUM:
+        return _LEGACY_TO_BOLUM[sektor]
+    try:
+        from analyzer import nace_to_bolum
+        return nace_to_bolum(sektor)
+    except Exception:
+        return "G"
+
+
+def _inject_nace_esikler() -> None:
+    """
+    NACE_BOLUM_ORT ortalamalarından eşik türetip RASYO_TANIMLARI'na enjekte eder.
+    yuksek_iyi : (ort×1.2, ort×0.8, ort×0.6)
+    dusuk_iyi  : (ort×0.8, ort×1.2, ort×1.6)
+    K → J ortalaması, O → N ortalaması kullanılır.
+    """
+    try:
+        from analyzer import NACE_BOLUM_ORT
+    except Exception:
+        return
+
+    _BOLUMLER = ["A","B","C","D","E","F","G","H","I","J","K","L","M","N","P","Q","R","S"]
+    _KAYNAK   = {"K": "J", "O": "N"}
+
+    for t in RASYO_TANIMLARI:
+        rid = t["id"]
+        yon = t["yon"]
+        for bolum in _BOLUMLER:
+            kaynak      = _KAYNAK.get(bolum, bolum)
+            ort         = NACE_BOLUM_ORT.get(kaynak, NACE_BOLUM_ORT["G"]).get(rid)
+            if not ort:
+                continue
+            if yon == "yuksek_iyi":
+                t["esikler"][bolum] = (ort * 1.2, ort * 0.8, ort * 0.6)
+            else:
+                t["esikler"][bolum] = (ort * 0.8, ort * 1.2, ort * 1.6)
+
+
+_inject_nace_esikler()
 
 # Puan çarpanları: mukemmel=1.0, iyi=0.65, zayıf=0.30, kötü=0.0
 KATEGORI_MAX = {k: sum(t["max_puan"] for t in RASYO_TANIMLARI if t["kategori"] == k)
@@ -731,7 +780,8 @@ def skorla(bs, sektor: Sektor = "ticaret") -> SkorSonuc:
     for t in RASYO_TANIMLARI:
         rid = t["id"]
         deger = degerler.get(rid, 0.0)
-        esikler = t["esikler"].get(sektor, t["esikler"]["ticaret"])
+        bolum   = _sektor_to_bolum(sektor)
+        esikler = t["esikler"].get(bolum) or t["esikler"].get("ticaret")
         bant = _bant_bul(deger, esikler, t["yon"])
         puan = t["max_puan"] * BANT_CARPAN[bant]
 
