@@ -278,14 +278,15 @@ Aşağıdaki 5 bölümü sırayla yaz, her biri bir paragraf olsun:
 # ─────────────────────────────────────────────
 
 def _guclu_yonler(skor_sonuc: "SkorSonuc", analizler: list["RasyoAnaliz"]) -> list[str]:
+    import re
     guclu = []
 
+    # Mutlak değeri düşük (kötü/zayıf bantlı) rasyolar güçlü listesine giremez
+    kotu_zayif_adlari = {r.ad for r in skor_sonuc.rasyolar if r.bant in ("kotu", "zayif")}
+
     for a in analizler:
-        if a.karsilastirma == "iyi":
-            # Açıklamayı ilk cümleyle sınırla — sayı sonrası noktada kesme
+        if a.karsilastirma == "iyi" and a.ad not in kotu_zayif_adlari:
             aciklama = a.ne_anlama_gelir
-            # Cümle sonu tespiti: nokta + boşluk + büyük harf veya cümle sonu
-            import re
             cumleler = re.split(r'(?<=[a-züöçşığıA-ZÜÖÇŞİĞI])\. ', aciklama)
             ozet = cumleler[0].rstrip('.') + "." if cumleler else aciklama
             guclu.append(
@@ -539,8 +540,6 @@ def _potansiyel_raporu(skor_sonuc: "SkorSonuc", bs, sektor: str = "ticaret") -> 
 
     # ── Her rasyo için bir sonraki bant eşiğini hesapla ──
     rasyo_meta = {t["id"]: t for t in RASYO_TANIMLARI}
-    sektor = sektor or getattr(bs, "sektor", "ticaret") or "ticaret"
-
     rasyo_detay = ""
     for r in kotu_zayif:
         kayip = r.max_puan - r.puan
@@ -1387,7 +1386,7 @@ def _alt_hesap_analizi(bs) -> list:
 
             elif parent in _PASIF_HESAPLAR:
                 sirali        = sorted(kalemler, key=lambda k: abs(k["bakiye"]), reverse=True)
-                toplam_bakiye = sum(abs(k["bakiye"]) for k in kalemler if k["bakiye"] < 0)
+                toplam_bakiye = sum(abs(k["bakiye"]) for k in kalemler if k["bakiye"] != 0)
                 toplam_hacim  = sum(k["alacak_top"] for k in kalemler)
                 hacim_satir   = f"Alacak (ciro) hacmi: {toplam_hacim:,.0f} TL | "
                 def _fmt_pasif(k):
@@ -1403,7 +1402,7 @@ def _alt_hesap_analizi(bs) -> list:
                 tip = _hesap_tipi(parent)
                 if tip == "pasif":
                     sirali        = sorted(kalemler, key=lambda k: abs(k["bakiye"]), reverse=True)
-                    toplam_bakiye = sum(abs(k["bakiye"]) for k in kalemler if k["bakiye"] < 0)
+                    toplam_bakiye = sum(abs(k["bakiye"]) for k in kalemler if k["bakiye"] != 0)
                     toplam_hacim  = sum(k["alacak_top"] for k in kalemler)
                     hacim_satir   = f"Alacak hacmi: {toplam_hacim:,.0f} TL | "
                     def _fmt_pasif_gen(k):
