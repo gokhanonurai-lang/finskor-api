@@ -320,11 +320,16 @@ def _zayif_yonler(skor_sonuc: "SkorSonuc", analizler: list["RasyoAnaliz"]) -> li
     """
     Zayıf yönleri mesaj + iyileştirme adımlarıyla döner.
     Her eleman: {"seviye": "kritik"|"uyari", "mesaj": str, "iyilestir": list[str]}
+    Güçlü yönlere giren rasyolar (karsilastirma=="iyi") zayıf yönlere eklenmez.
     """
+    import re
     zayif = []
     analiz_dict = {a.rasyo_id: a for a in analizler}
 
-    # Kırmızı bayraklar en önce
+    # Güçlü yönlere giren rasyo id'leri — çakışmayı önlemek için
+    guclu_rasyo_idleri = {a.rasyo_id for a in analizler if a.karsilastirma == "iyi"}
+
+    # Kırmızı bayraklar en önce (rasyo filtresi uygulanmaz — bunlar ayrı bir kaynak)
     for b in skor_sonuc.kirmizi_bayraklar:
         seviye = "kritik" if b.ciddiyet == "kritik" else "uyari"
         zayif.append({
@@ -336,9 +341,11 @@ def _zayif_yonler(skor_sonuc: "SkorSonuc", analizler: list["RasyoAnaliz"]) -> li
     # Kötü bantlı rasyolar
     for r in skor_sonuc.rasyolar:
         if r.bant == "kotu":
-            analiz = analiz_dict.get(getattr(r, 'id', ''))
+            rasyo_id = getattr(r, 'id', '')
+            if rasyo_id in guclu_rasyo_idleri:
+                continue
+            analiz = analiz_dict.get(rasyo_id)
             iyilestir = analiz.nasil_iyilestirilir[:3] if analiz and analiz.nasil_iyilestirilir else []
-            import re
             aciklama_k = analiz.ne_anlama_gelir if analiz else ""
             cumleler_k = re.split(r'(?<=[a-züöçşığıA-ZÜÖÇŞİĞI])\. ', aciklama_k)
             ozet_k = cumleler_k[0].rstrip('.') + "." if cumleler_k else ""
@@ -355,9 +362,11 @@ def _zayif_yonler(skor_sonuc: "SkorSonuc", analizler: list["RasyoAnaliz"]) -> li
     # Zayıf bantlı rasyolar
     for r in skor_sonuc.rasyolar:
         if r.bant == "zayif":
-            analiz = analiz_dict.get(getattr(r, 'id', ''))
+            rasyo_id = getattr(r, 'id', '')
+            if rasyo_id in guclu_rasyo_idleri:
+                continue
+            analiz = analiz_dict.get(rasyo_id)
             iyilestir = analiz.nasil_iyilestirilir[:3] if analiz and analiz.nasil_iyilestirilir else []
-            import re
             aciklama_z = analiz.ne_anlama_gelir if analiz else ""
             cumleler_z = re.split(r'(?<=[a-züöçşığıA-ZÜÖÇŞİĞI])\. ', aciklama_z)
             ozet_z = cumleler_z[0].rstrip('.') + "." if cumleler_z else ""
