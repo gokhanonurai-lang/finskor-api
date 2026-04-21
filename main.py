@@ -211,7 +211,8 @@ async def analyze(
             "yeni_limit_aciklama": s.yeni_limit_aciklama,
         } for s in rapor.senaryolar]
 
-        # Banka soruları
+        # Banka soruları — öncelik sırasıyla max 20
+        _sinirli = sorted(rapor.banka_sorulari, key=lambda b: b.oncelik)[:35]
         banka_sorulari = [{
             "kategori": b.kategori,
             "soru": b.soru,
@@ -219,7 +220,7 @@ async def analyze(
             "hazir_cevap": b.hazir_cevap,
             "skor_etkisi": b.skor_etkisi,
             "oncelik": b.oncelik,
-        } for b in rapor.banka_sorulari]
+        } for b in _sinirli]
 
         # Kredi türü
         kt = rapor.kredi_turu_oneri
