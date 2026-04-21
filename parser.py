@@ -749,7 +749,7 @@ Diğer kalemlere dokunma. Markdown veya açıklama ekleme, sadece JSON."""
     try:
         client = anthropic.Anthropic()
         response = client.messages.create(
-            model="claude-sonnet-4-20250514",
+            model="claude-sonnet-4-6",
             max_tokens=500,
             system=system_prompt,
             messages=[{
@@ -802,7 +802,7 @@ finansman_gelirleri, finansman_giderleri, vergi_gideri"""
 
     client = anthropic.Anthropic()
     response = client.messages.create(
-        model="claude-sonnet-4-20250514",
+        model="claude-sonnet-4-6",
         max_tokens=2000,
         system=system_prompt,
         messages=[{

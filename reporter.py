@@ -261,7 +261,7 @@ Aşağıdaki 5 bölümü sırayla yaz, her biri bir paragraf olsun:
 
     try:
         client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
-        message = _claude_call(client, "claude-sonnet-4-20250514", 2000, [{"role": "user", "content": prompt}])
+        message = _claude_call(client, "claude-sonnet-4-6", 2000, [{"role": "user", "content": prompt}])
         return message.content[0].text.strip()
     except Exception as e:
         harf = skor_sonuc.harf
@@ -642,7 +642,7 @@ YAZIM KURALLARI:
 
     client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
     try:
-        message = _claude_call(client, "claude-sonnet-4-20250514", 6000, [{"role": "user", "content": prompt}])
+        message = _claude_call(client, "claude-sonnet-4-6", 6000, [{"role": "user", "content": prompt}])
         return message.content[0].text.strip()
     except Exception as e:
         print(f'[potansiyel_raporu ERROR] {e}')
@@ -1489,8 +1489,8 @@ Türkçe yaz."""
         try:
             response = _claude_call(
                 client,
-                "claude-haiku-4-5-20251001",
-                700,
+                "claude-sonnet-4-6",
+                4000,
                 [{"role": "user", "content": prompt}],
             )
             raw = response.content[0].text.strip()
@@ -1640,7 +1640,7 @@ Yanıtı sadece üç numaralı paragraf halinde yaz. Başlık ekleme."""
     try:
         client = anthropic.Anthropic(api_key=api_key)
         msg = client.messages.create(
-            model="claude-sonnet-4-20250514",
+            model="claude-sonnet-4-6",
             max_tokens=2500,
             messages=[{"role": "user", "content": prompt}],
         )
