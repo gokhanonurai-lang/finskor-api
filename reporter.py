@@ -1679,14 +1679,18 @@ def rapor_olustur(
     # Negatif delta olanları çıkar; sıfır delta olanlar (yapısal iyileştirme) dahil edilir
     senaryolar = [s for s in senaryolar if s.skor_delta >= 0]
 
+    alt_hesap = _alt_hesap_analizi(bs)
+
     from question_bank import sorulari_uret
-    banka_sorulari = sorulari_uret(bs, skor_sonuc)
+    banka_sorulari = sorulari_uret(bs, skor_sonuc, sektor=sektor, alt_hesap_analizleri=alt_hesap, analizler=analizler)
+
+    skor_iyilestirme = _potansiyel_raporu(skor_sonuc, bs, sektor)
 
     return TamRapor(
         firma_adi=firma_adi,
         sektor=sektor,
         yonetici_ozeti=_yonetici_ozeti(skor_sonuc, bs, sektor),
-        potansiyel_raporu=_potansiyel_raporu(skor_sonuc, bs, sektor),
+        potansiyel_raporu=skor_iyilestirme,
         guclu_yonler=_guclu_yonler(skor_sonuc, analizler),
         zayif_yonler=_zayif_yonler(skor_sonuc, analizler),
         rasyo_analizleri=analizler,
@@ -1697,8 +1701,8 @@ def rapor_olustur(
         senaryolar=senaryolar,
         banka_hazirlik=_banka_hazirlik(skor_sonuc, bs),
         zaman_cizelgesi=_zaman_cizelgesi(skor_sonuc, senaryolar),
-        skor_iyilestirme=_potansiyel_raporu(skor_sonuc, bs, sektor),
-        alt_hesap_analizi=_alt_hesap_analizi(bs),
+        skor_iyilestirme=skor_iyilestirme,
+        alt_hesap_analizi=alt_hesap,
         finansal_tablo_yorumu=_finansal_tablo_yorumu(bs, sektor),
         disclaimer=DISCLAIMER,
     )
