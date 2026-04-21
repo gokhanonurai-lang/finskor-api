@@ -223,11 +223,24 @@ KALAN ALT HESAP ANALİZLERİ:
 BİLANÇO ÖZETİ:
 {bilanco_ozeti}"""
 
-    # ── Üç çağrıyı yap, birleştir ────────────────────────────────────────
+    # ── Üç çağrıyı paralel yap, birleştir ───────────────────────────────
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    gorevler = [
+        (prompt1, "Çağrı-1-kritik"),
+        (prompt2, "Çağrı-2-alt-hesap"),
+        (prompt3, "Çağrı-3-olagandusu"),
+    ]
+    sonuclar: dict[str, list[BankaSorusu]] = {}
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        futures = {executor.submit(_cagri, client, p, e): e for p, e in gorevler}
+        for future in as_completed(futures):
+            etiket = futures[future]
+            sonuclar[etiket] = future.result()
+
     tum_sorular: list[BankaSorusu] = []
-    tum_sorular += _cagri(client, prompt1, "Çağrı-1-kritik")
-    tum_sorular += _cagri(client, prompt2, "Çağrı-2-alt-hesap")
-    tum_sorular += _cagri(client, prompt3, "Çağrı-3-olagandusu")
+    for _, e in gorevler:
+        tum_sorular += sonuclar.get(e, [])
 
     tum_sorular.sort(key=lambda s: s.oncelik)
     logger.info(f"Toplam banka sorusu: {len(tum_sorular)}")

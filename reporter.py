@@ -1458,11 +1458,11 @@ def _alt_hesap_analizi(bs) -> list:
     if not hesap_meta:
         return []
 
-    # ── 3. Her hesap için ayrı Claude çağrısı ───────────────────────────
-    client    = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
-    analizler: dict[str, str] = {}
+    # ── 3. Her hesap için paralel Claude çağrısı ────────────────────────
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
 
-    for parent, meta in hesap_meta.items():
+    def _analiz_et(parent: str, meta: dict) -> tuple[str, str]:
         prompt = f"""BilankoSkor finansal analiz yazılımı — alt hesap analiz modülü.
 
 {meta['blok']}
@@ -1485,7 +1485,6 @@ SADECE JSON döndür. Markdown veya açıklama ekleme. Format:
 {{"analiz": "<**Tespit:** ... **Risk/Fırsat:** ... **Öneri:** ...>"}}
 
 Türkçe yaz."""
-
         try:
             response = _claude_call(
                 client,
@@ -1496,10 +1495,17 @@ Türkçe yaz."""
             raw = response.content[0].text.strip()
             raw = raw.replace("```json", "").replace("```", "").strip()
             data = _json.loads(raw)
-            analizler[parent] = data.get("analiz", "Analiz üretilemedi.")
+            return parent, data.get("analiz", "Analiz üretilemedi.")
         except Exception as e:
             logger.warning(f"Alt hesap Claude çağrısı başarısız ({parent}): {e}")
-            analizler[parent] = "Analiz üretilemedi."
+            return parent, "Analiz üretilemedi."
+
+    analizler: dict[str, str] = {}
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        futures = {executor.submit(_analiz_et, p, m): p for p, m in hesap_meta.items()}
+        for future in as_completed(futures):
+            parent, sonuc = future.result()
+            analizler[parent] = sonuc
 
     # ── 4. Sonuçları birleştir ───────────────────────────────────────────
     sonuclar = []
