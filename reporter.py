@@ -770,7 +770,7 @@ def _senaryolari_hesapla(bs, skor_sonuc: "SkorSonuc", sektor: str) -> list[Senar
     4. Sona kombine senaryo ekle.
     """
     from scorer import (skorla, RASYO_TANIMLARI, _bant_bul,
-                        _hesapla_degerler, _harf_notu)
+                        _hesapla_degerler, _harf_notu, _sektor_to_bolum)
     import dataclasses
 
     baz_puan = skor_sonuc.toplam_puan
@@ -791,7 +791,11 @@ def _senaryolari_hesapla(bs, skor_sonuc: "SkorSonuc", sektor: str) -> list[Senar
         t = rasyo_meta.get(rid)
         if not t:
             return None
-        m, i, z = t["esikler"].get(sektor, t["esikler"]["ticaret"])
+        bolum = _sektor_to_bolum(sektor)
+        esikler = t["esikler"].get(bolum) or t["esikler"].get("ticaret")
+        if not esikler:
+            return None
+        m, i, z = esikler
         band = _bant_bul(val, (m, i, z), t["yon"])
         if t["yon"] == "yuksek_iyi":
             return {" kotu": z, "kotu": z, "zayif": i, "iyi": m}.get(band)
