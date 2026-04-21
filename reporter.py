@@ -642,7 +642,7 @@ YAZIM KURALLARI:
 
     client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
     try:
-        message = _claude_call(client, "claude-sonnet-4-6", 6000, [{"role": "user", "content": prompt}])
+        message = _claude_call(client, "claude-sonnet-4-6", 8000, [{"role": "user", "content": prompt}])
         return message.content[0].text.strip()
     except Exception as e:
         print(f'[potansiyel_raporu ERROR] {e}')
@@ -1501,11 +1501,13 @@ Türkçe yaz."""
             return parent, "Analiz üretilemedi."
 
     analizler: dict[str, str] = {}
+    logger.info(f"Alt hesap paralel analiz başlıyor: {len(hesap_meta)} hesap, max_workers=10")
     with ThreadPoolExecutor(max_workers=10) as executor:
         futures = {executor.submit(_analiz_et, p, m): p for p, m in hesap_meta.items()}
         for future in as_completed(futures):
             parent, sonuc = future.result()
             analizler[parent] = sonuc
+            logger.info(f"Alt hesap tamamlandı: {parent}")
 
     # ── 4. Sonuçları birleştir ───────────────────────────────────────────
     sonuclar = []
