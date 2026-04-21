@@ -1697,12 +1697,20 @@ def rapor_olustur(
         logger.error(f"sorulari_uret() beklenmedik hata: {e}")
         banka_sorulari = []
 
-    skor_iyilestirme = _potansiyel_raporu(skor_sonuc, bs, sektor)
+    from concurrent.futures import ThreadPoolExecutor
+
+    with ThreadPoolExecutor(max_workers=3) as ex:
+        f_yonetici   = ex.submit(_yonetici_ozeti, skor_sonuc, bs, sektor)
+        f_potansiyel = ex.submit(_potansiyel_raporu, skor_sonuc, bs, sektor)
+        f_finansal   = ex.submit(_finansal_tablo_yorumu, bs, sektor)
+        yonetici_ozeti_sonuc      = f_yonetici.result()
+        skor_iyilestirme          = f_potansiyel.result()
+        finansal_tablo_yorumu_sonuc = f_finansal.result()
 
     return TamRapor(
         firma_adi=firma_adi,
         sektor=sektor,
-        yonetici_ozeti=_yonetici_ozeti(skor_sonuc, bs, sektor),
+        yonetici_ozeti=yonetici_ozeti_sonuc,
         potansiyel_raporu=skor_iyilestirme,
         guclu_yonler=_guclu_yonler(skor_sonuc, analizler),
         zayif_yonler=_zayif_yonler(skor_sonuc, analizler),
@@ -1716,6 +1724,6 @@ def rapor_olustur(
         zaman_cizelgesi=_zaman_cizelgesi(skor_sonuc, senaryolar),
         skor_iyilestirme=skor_iyilestirme,
         alt_hesap_analizi=alt_hesap,
-        finansal_tablo_yorumu=_finansal_tablo_yorumu(bs, sektor),
+        finansal_tablo_yorumu=finansal_tablo_yorumu_sonuc,
         disclaimer=DISCLAIMER,
     )
