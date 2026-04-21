@@ -1682,7 +1682,12 @@ def rapor_olustur(
     alt_hesap = _alt_hesap_analizi(bs)
 
     from question_bank import sorulari_uret
-    banka_sorulari = sorulari_uret(bs, skor_sonuc, sektor=sektor, alt_hesap_analizleri=alt_hesap, analizler=analizler)
+    try:
+        banka_sorulari = sorulari_uret(bs, skor_sonuc, sektor=sektor, alt_hesap_analizleri=alt_hesap, analizler=analizler)
+        logger.info(f"Banka soruları: {len(banka_sorulari)} soru üretildi")
+    except Exception as e:
+        logger.error(f"sorulari_uret() beklenmedik hata: {e}")
+        banka_sorulari = []
 
     skor_iyilestirme = _potansiyel_raporu(skor_sonuc, bs, sektor)
 

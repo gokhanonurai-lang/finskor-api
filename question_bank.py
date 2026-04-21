@@ -50,11 +50,15 @@ def _uret_sonnet(bs, skor_sonuc, sektor: str, alt_hesap_analizleri: list, analiz
 
     # ── Firma verileri ──────────────────────────────────────────────────
     toplam_aktif = bs.toplam_aktif or 1
+    favok_satir = (
+        f"FAVÖK: {bs.favok:,.0f} TL  |  FAVÖK Marjı: %{bs.favok/bs.net_satislar*100:.1f}\n"
+        if bs.net_satislar else f"FAVÖK: {bs.favok:,.0f} TL\n"
+    )
     firma_verileri = (
         f"Skor: {skor_sonuc.skor}/100 ({skor_sonuc.harf} — {skor_sonuc.kredi_band})\n"
         f"Sektör: {sektor} (NACE bölüm: {bolum})\n"
         f"Net Satışlar: {bs.net_satislar:,.0f} TL\n"
-        f"FAVÖK: {bs.favok:,.0f} TL  |  FAVÖK Marjı: %{bs.favok/bs.net_satislar*100:.1f}" if bs.net_satislar else ""
+        + favok_satir +
         f"Net Kâr: {bs.net_kar:,.0f} TL\n"
         f"Toplam Aktif: {bs.toplam_aktif:,.0f} TL\n"
         f"Özkaynaklar: {bs.ozkaynaklar:,.0f} TL\n"
@@ -188,11 +192,13 @@ BİLANÇO ÖZETİ:
                     tetikleyen="sonnet",
                 ))
             sorular.sort(key=lambda s: s.oncelik)
+            logger.info(f"Banka soruları üretildi: {len(sorular)} soru")
             return sorular
 
-        except (json.JSONDecodeError, KeyError, IndexError) as e:
-            logger.warning(f"Banka sorusu parse hatası (deneme {deneme+1}/3): {e}")
-            if deneme == 2:
-                return []
+        except json.JSONDecodeError as e:
+            logger.warning(f"Banka sorusu JSON parse hatası (deneme {deneme+1}/3): {e}")
+        except Exception as e:
+            logger.warning(f"Banka sorusu üretim hatası (deneme {deneme+1}/3): {type(e).__name__}: {e}")
 
+    logger.error("Banka soruları 3 denemede de üretilemedi — boş liste dönülüyor")
     return []
