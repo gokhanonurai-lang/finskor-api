@@ -487,6 +487,9 @@ _ALACAK_NORMAL_6XX = frozenset(
 )
 # 690/692 kapanış devir hesapları — zaten toplam olduklarından atlanır
 _SKIP_6XX = frozenset(["690", "692"])
+# İki taraflı hareket hesapları: borc_top - alacak_top net farkı kullanılır
+# (697: 697.170 borç + 697.350 alacak birbiriyle offsetlanır, net P&L etkisi sıfır)
+_NET_HAREKET_6XX = frozenset(["697"])
 
 
 def _read_excel(filepath):
@@ -638,6 +641,10 @@ def _read_excel(filepath):
                     and borc_top > 0 and alacak_top > 0):
                 if root3 in _ALACAK_NORMAL_6XX:
                     borc = 0.0; alacak = alacak_top
+                elif root3 in _NET_HAREKET_6XX:
+                    net = borc_top - alacak_top
+                    borc = net if net > 0 else 0.0
+                    alacak = (-net) if net < 0 else 0.0
                 else:
                     borc = borc_top; alacak = 0.0
             else:
