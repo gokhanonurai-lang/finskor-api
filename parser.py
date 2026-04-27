@@ -476,11 +476,25 @@ def _read_excel(filepath):
         alt_hesap_raw: {parent: [{"kod", "ad", "borc_top", "alacak_top", "bakiye"}, ...]}
         parent_bak: {parent: signed_bakiye}  — doğruluk kontrolü için
     """
-    wb = openpyxl.load_workbook(filepath, data_only=True)
+    wb = openpyxl.load_workbook(filepath, data_only=False)
     best_ws = max(wb.worksheets, key=lambda ws: ws.max_row)
     code_col, borc_bak_col, alacak_bak_col, borc_top_col, alacak_top_col = _find_columns(best_ws)
     if not code_col or not borc_bak_col:
         raise ValueError("Hesap kodu veya bakiye kolonu tespit edilemedi.")
+
+    # Formül tespiti: bakiye sütunundaki ilk dolu hücreye bak
+    _has_formula = False
+    for _row in best_ws.iter_rows(min_row=2, max_row=30):
+        _cell = _row[borc_bak_col - 1]
+        if _cell.value is not None:
+            _has_formula = isinstance(_cell.value, str) and _cell.value.startswith("=")
+            break
+    if _has_formula:
+        logger.info("Formül hücresi tespit edildi — data_only=True ile yeniden açılıyor.")
+        wb = openpyxl.load_workbook(filepath, data_only=True)
+        best_ws = max(wb.worksheets, key=lambda ws: ws.max_row)
+    else:
+        logger.info("Hücreler sayısal — data_only=False yeterli.")
 
     logger.info(f"Bakiye sutunlari: borc_bak={borc_bak_col}, alacak_bak={alacak_bak_col}, "
                 f"borc_top={borc_top_col}, alacak_top={alacak_top_col}")
