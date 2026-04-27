@@ -496,12 +496,17 @@ def _read_excel(filepath):
     if not code_col or not borc_bak_col:
         raise ValueError("Hesap kodu veya bakiye kolonu tespit edilemedi.")
 
-    # Formül tespiti: bakiye sütunundaki ilk dolu hücreye bak
+    # Formül tespiti: bakiye + toplam sütunlarının hepsine bak
+    _kontrol_kolonlar = [c for c in [borc_bak_col, alacak_bak_col, borc_top_col, alacak_top_col] if c]
     _has_formula = False
     for _row in best_ws.iter_rows(min_row=2, max_row=30):
-        _cell = _row[borc_bak_col - 1]
-        if _cell.value is not None:
-            _has_formula = isinstance(_cell.value, str) and _cell.value.startswith("=")
+        for _col in _kontrol_kolonlar:
+            _cell = _row[_col - 1]
+            if _cell.value is not None:
+                if isinstance(_cell.value, str) and _cell.value.startswith("="):
+                    _has_formula = True
+                    break
+        if _has_formula:
             break
     if _has_formula:
         logger.info("Formül hücresi tespit edildi — data_only=True ile yeniden açılıyor.")
