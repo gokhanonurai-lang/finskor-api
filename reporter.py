@@ -1575,12 +1575,17 @@ def _finansal_tablo_yorumu(bs, sektor: str = "ticaret") -> str:
     if ns <= 0:
         return ""
 
-    # Gelir tablosu oranları
+    # Gelir tablosu kalemleri
     brut_kar = ns - bs.satislarin_maliyeti
-    brut_mar = brut_kar / ns * 100
+    faaliyet_kari = bs.favok - bs.enflasyon_duzeltme_zarari - bs.yillara_yaygin_enflasyon_net
+    vergi_oncesi_kar = bs.vergi_oncesi_kar
+
+    # Oranlar
     maliyet_oran = bs.satislarin_maliyeti / ns * 100
-    favok_mar = bs.favok / ns * 100
+    brut_mar = brut_kar / ns * 100
     faaliyet_gider_oran = bs.faaliyet_giderleri / ns * 100
+    favok_mar = bs.favok / ns * 100
+    faaliyet_kar_mar = faaliyet_kari / ns * 100
     net_mar = bs.net_kar / ns * 100
 
     # Bilanço oranları
@@ -1598,7 +1603,7 @@ def _finansal_tablo_yorumu(bs, sektor: str = "ticaret") -> str:
 Bankacı gözüyle şu sırayla yorum yap:
 
 1. GELİR TABLOSU ORANLARI: Satış maliyetinin net satışa oranı, brüt kâr marjı,
-   FAVÖK marjı, faaliyet gider oranı, net kâr marjı — bu oranlar ne söylüyor?
+   FAVÖK marjı, faaliyet kâr marjı, net kâr marjı — bu oranlar ne söylüyor?
    Sektör için iyi mi kötü mü?
 
 2. BİLANÇO ORANLARI: Aktif yapısında dönen/duran dağılımı, pasif yapısında
@@ -1615,15 +1620,19 @@ VERİLER:
 Sektör: {sektor_label}
 
 GELİR TABLOSU:
-- Net Satışlar: {ns:,.0f} TL
-- Satış Maliyeti: {bs.satislarin_maliyeti:,.0f} TL → oran: %{maliyet_oran:.1f}
-- Brüt Kâr: {brut_kar:,.0f} TL → brüt kâr marjı: %{brut_mar:.1f}
-- Faaliyet Giderleri: {bs.faaliyet_giderleri:,.0f} TL → oran: %{faaliyet_gider_oran:.1f}
-- FAVÖK: {bs.favok:,.0f} TL → FAVÖK marjı: %{favok_mar:.1f}
-- Enflasyon Düzeltme Zararı: {bs.enflasyon_duzeltme_zarari:,.0f} TL
-- Finansman Gelirleri: {bs.finansman_gelirleri:,.0f} TL
-- Finansman Giderleri: {bs.finansman_giderleri:,.0f} TL
-- Net Kâr: {bs.net_kar:,.0f} TL → net kâr marjı: %{net_mar:.1f}
+  Net Satışlar                : {ns:>15,.0f} TL
+- Satış Maliyeti              : {bs.satislarin_maliyeti:>15,.0f} TL  (oran: %{maliyet_oran:.1f})
+= Brüt Kâr                   : {brut_kar:>15,.0f} TL  (brüt kâr marjı: %{brut_mar:.1f})
+- Faaliyet Giderleri          : {bs.faaliyet_giderleri:>15,.0f} TL  (oran: %{faaliyet_gider_oran:.1f})
+= FAVÖK                       : {bs.favok:>15,.0f} TL  (FAVÖK marjı: %{favok_mar:.1f})
+- Enflasyon Düzeltme Zararı   : {bs.enflasyon_duzeltme_zarari:>15,.0f} TL
+- Yıllara Yaygın Enf. Net     : {bs.yillara_yaygin_enflasyon_net:>15,.0f} TL
+= Faaliyet Kârı               : {faaliyet_kari:>15,.0f} TL  (faaliyet kâr marjı: %{faaliyet_kar_mar:.1f})
++ Finansman Gelirleri         : {bs.finansman_gelirleri:>15,.0f} TL
+- Finansman Giderleri         : {bs.finansman_giderleri:>15,.0f} TL
+= Vergi Öncesi Kâr            : {vergi_oncesi_kar:>15,.0f} TL
+- Vergi                       : {bs.vergi_gideri:>15,.0f} TL
+= Net Kâr                     : {bs.net_kar:>15,.0f} TL  (net kâr marjı: %{net_mar:.1f})
 
 BİLANÇO:
 Aktif ({ta:,.0f} TL toplam):
