@@ -76,10 +76,10 @@ class BalanceSheet:
     diger_faaliyet_gelirleri: float = 0.0     # 640–649
     diger_faaliyet_giderleri: float = 0.0     # 633, 650–657, 659, 680–689 (658 hariç)
     enflasyon_duzeltme_zarari: float = 0.0    # 658 — nakit dışı, FAVÖK'e dahil değil
+    yillara_yaygin_enflasyon_net: float = 0.0 # 697 — inşaat enflasyon düzeltmesi (FAVÖK dışı)
     finansman_gelirleri: float = 0.0     # 670–679
     finansman_giderleri: float = 0.0     # 660 + 661
-    vergi_oncesi_kar: float = 0.0        # 690 (hesaplanır)
-    vergi_gideri: float = 0.0            # 691 + 692
+    vergi_gideri: float = 0.0            # 691
 
     # META
     parse_method: str = "rule_based"     # "rule_based" | "ai_fallback"
@@ -148,11 +148,15 @@ class BalanceSheet:
                 self.diger_faaliyet_gelirleri - self.diger_faaliyet_giderleri)
 
     @property
+    def vergi_oncesi_kar(self) -> float:
+        return self.net_kar + self.vergi_gideri
+
+    @property
     def net_kar(self) -> float:
-        # Gelir tablosu hesaplarından hesapla
-        # Not: enflasyon_duzeltme_zarari (658) FAVÖK'e dahil değil, ayrıca çıkarılır
+        # 697 iki tarafı birbirini dengeler (net ≈ 0), FAVÖK dışında tutulur
         hesaplanan = (self.favok
                       - self.enflasyon_duzeltme_zarari
+                      - self.yillara_yaygin_enflasyon_net
                       + self.finansman_gelirleri
                       - self.finansman_giderleri
                       - self.vergi_gideri)
@@ -355,6 +359,7 @@ ACCOUNT_MAP: list[tuple[list[str], str, int]] = [
       "680", "681", "682", "683", "684", "685",
       "686", "687", "688", "689"], "diger_faaliyet_giderleri", 1),
     (["658"], "enflasyon_duzeltme_zarari", 1),  # nakit dışı — FAVÖK dışında tutulur
+    (["697"], "yillara_yaygin_enflasyon_net", 1),  # inşaat enflasyon düzeltmesi — iki taraf dengeler
     (["660", "661"], "finansman_giderleri", 1),
     (["670", "671", "672", "673", "674",
       "675", "676", "677", "678", "679"], "finansman_gelirleri", -1),      # alacak-normal
