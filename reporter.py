@@ -1746,54 +1746,60 @@ def _zenginlestir_analizler(
             f" | bant: {bant} | sektör ort: {a.sektor_ort_fmt}{hedef}"
         )
 
-    prompt = f"""Türk bankacı ve finansal analistsin. Aşağıdaki {len(analizler)} rasyo için firmaya özgü Türkçe açıklama ve iyileştirme önerileri üret.
+    sektor_label = _sektor_label(sektor)
 
-Firma sektörü: {_sektor_label(sektor)}
+    def _prompt_for_batch(batch_satirlar: list[str], batch_ids: list[str]) -> str:
+        id_list = "\n".join(f'  "{rid}": {{"aciklama": "...", "iyilestir": [...]}}'
+                            for rid in batch_ids)
+        return f"""Türk bankacı ve finansal analistsin. Aşağıdaki {len(batch_satirlar)} rasyo için firmaya özgü Türkçe açıklama ve iyileştirme önerileri üret.
+
+Firma sektörü: {sektor_label}
 
 RASYOLAR:
-{chr(10).join(satirlar)}
+{chr(10).join(batch_satirlar)}
 
 KURALLAR:
-- aciklama: 2 cümle. İlk cümle mevcut değeri somut TL/oran bağlamıyla açıkla, ikinci cümle bu değerin banka veya işletme gözünden ne anlama geldiğini söyle.
-- iyilestir: tam 3 madde. Sektöre ve firmaya uygun, somut, uygulanabilir adımlar. Stok bakiyesi yoksa stok önerme. Finansman gideri yoksa faiz önerme.
-- bant "mukemmel" veya "iyi" olan rasyolarda iyilestir listesi boş bırak: [].
-- Markdown karakteri kullanma (**, *, -).
+- aciklama: 2 cümle. İlk cümle mevcut değeri somut oran/TL bağlamıyla açıkla, ikinci cümle banka veya işletme gözünden ne anlama geldiğini söyle.
+- iyilestir: tam 3 madde. Sektöre uygun, somut adımlar. Stok yoksa stok önerme. Finansman gideri yoksa faiz önerme.
+- bant "mukemmel" veya "iyi" ise iyilestir boş liste: [].
+- Markdown kullanma (**, *, -).
 - Sadece JSON döndür, başka metin yazma.
 
-FORMAT (bu yapıyı AYNEN kullan, tüm {len(analizler)} rasyo_id için):
+FORMAT (bu yapıyı AYNEN kullan):
 {{
-  "cari_oran": {{"aciklama": "...", "iyilestir": ["...", "...", "..."]}},
-  "asit_test": {{"aciklama": "...", "iyilestir": [...]}},
-  "nakit_oran": {{"aciklama": "...", "iyilestir": [...]}},
-  "borc_ozkaynak": {{"aciklama": "...", "iyilestir": [...]}},
-  "finansal_kaldırac": {{"aciklama": "...", "iyilestir": [...]}},
-  "kv_borc_orani": {{"aciklama": "...", "iyilestir": [...]}},
-  "ortaklar_cari_orani": {{"aciklama": "...", "iyilestir": [...]}},
-  "brut_kar_marji": {{"aciklama": "...", "iyilestir": [...]}},
-  "favok_marji": {{"aciklama": "...", "iyilestir": [...]}},
-  "faaliyet_gider_orani": {{"aciklama": "...", "iyilestir": [...]}},
-  "net_kar_marji": {{"aciklama": "...", "iyilestir": [...]}},
-  "roe": {{"aciklama": "...", "iyilestir": [...]}},
-  "roa": {{"aciklama": "...", "iyilestir": [...]}},
-  "stok_devir": {{"aciklama": "...", "iyilestir": [...]}},
-  "alacak_tahsil_suresi": {{"aciklama": "...", "iyilestir": [...]}},
-  "nakit_donusum_suresi": {{"aciklama": "...", "iyilestir": [...]}},
-  "faiz_karsilama": {{"aciklama": "...", "iyilestir": [...]}},
-  "net_borc_favok": {{"aciklama": "...", "iyilestir": [...]}},
-  "finansman_gider_orani": {{"aciklama": "...", "iyilestir": [...]}}
+{id_list}
 }}"""
 
-    client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
-    try:
-        message = _claude_call(client, "claude-sonnet-4-6", 6000, [{"role": "user", "content": prompt}])
-        raw = message.content[0].text.strip()
+    def _parse_batch(raw: str) -> dict:
         import re as _re2
         m = _re2.search(r'\{.*\}', raw, _re2.DOTALL)
-        data = _json.loads(m.group() if m else raw)
+        return _json.loads(m.group() if m else raw)
+
+    def _call_batch(batch: list) -> dict:
+        ids    = [a.rasyo_id for a in batch]
+        sats   = [satirlar[analizler.index(a)] for a in batch]
+        prompt = _prompt_for_batch(sats, ids)
+        client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
+        msg    = _claude_call(client, "claude-sonnet-4-6", 6000, [{"role": "user", "content": prompt}])
+        return _parse_batch(msg.content[0].text.strip())
+
+    # 19 rasyoyu iki gruba böl: ilk 10, son 9
+    yarı       = len(analizler) // 2 + len(analizler) % 2
+    batch_a    = analizler[:yarı]
+    batch_b    = analizler[yarı:]
+
+    from concurrent.futures import ThreadPoolExecutor as _TPE
+    try:
+        with _TPE(max_workers=2) as ex:
+            f_a = ex.submit(_call_batch, batch_a)
+            f_b = ex.submit(_call_batch, batch_b)
+            data_a = f_a.result()
+            data_b = f_b.result()
+        data = {**data_a, **data_b}
         for a in analizler:
             entry = data.get(a.rasyo_id)
             if entry:
-                a.ne_anlama_gelir    = _temizle(entry.get("aciklama", ""))
+                a.ne_anlama_gelir     = _temizle(entry.get("aciklama", ""))
                 a.nasil_iyilestirilir = [_temizle(s) for s in entry.get("iyilestir", []) if s]
     except Exception as e:
         logger.warning(f"[_zenginlestir_analizler ERROR] {e}")
