@@ -261,7 +261,7 @@ Aşağıdaki 5 bölümü sırayla yaz, her biri bir paragraf olsun:
 
     try:
         client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
-        message = _claude_call(client, "claude-sonnet-4-6", 2000, [{"role": "user", "content": prompt}])
+        message = _claude_call(client, "claude-sonnet-4-6", 6000, [{"role": "user", "content": prompt}])
         return message.content[0].text.strip()
     except Exception as e:
         harf = skor_sonuc.harf
@@ -1649,7 +1649,7 @@ Yanıtı sadece üç numaralı paragraf halinde yaz. Başlık ekleme."""
         client = anthropic.Anthropic(api_key=api_key)
         msg = client.messages.create(
             model="claude-sonnet-4-6",
-            max_tokens=2500,
+            max_tokens=4000,
             messages=[{"role": "user", "content": prompt}],
         )
         return msg.content[0].text.strip()
