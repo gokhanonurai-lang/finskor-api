@@ -176,6 +176,7 @@ class TamRapor:
     skor_iyilestirme: str
     alt_hesap_analizi: list   # list[dict] — her dict: ana_hesap_kodu, ana_hesap_adi, analiz_metni, uyari_notu
     finansal_tablo_yorumu: str
+    oncelik_tablosu: list = field(default_factory=list)
     disclaimer: str
 
 
@@ -573,27 +574,39 @@ def _potansiyel_raporu(skor_sonuc: "SkorSonuc", bs, sektor: str = "ticaret") -> 
         return f"{val:.2f}"
 
     rasyo_detay = ""
+    oncelik_tablosu: list[dict] = []
     for r in kotu_zayif:
         kayip    = r.max_puan - r.puan
         t        = rasyo_meta_by_ad.get(r.ad)
         ort_notu = ""
         esik_notu = ""
+        ort_fmt  = "-"
+        esik_fmt = "-"
         if t:
             rid = t["id"]
             ort = sektor_ort_dict.get(rid)
             if ort is not None:
                 ort_notu = f", sektör ort: {_fmt_ort(rid, ort)}"
+                ort_fmt  = _fmt_ort(rid, ort)
             bolum_esik    = _sektor_to_bolum(sektor)
             esikler_tuple = t["esikler"].get(bolum_esik) or t["esikler"].get("ticaret")
             if esikler_tuple:
                 m, i, z = esikler_tuple
                 sonraki   = z if r.bant == "kotu" else i
                 esik_notu = f", hedef eşik: {_fmt_ort(rid, sonraki)}"
+                esik_fmt  = _fmt_ort(rid, sonraki)
         rasyo_detay += (
             f"- {r.ad}: {r.deger_fmt}"
             f"{ort_notu}{esik_notu}"
             f" (bant: {r.bant}, kayıp puan: {kayip}/{r.max_puan})\n"
         )
+        oncelik_tablosu.append({
+            "rasyo": r.ad,
+            "mevcut": r.deger_fmt,
+            "hedef": esik_fmt,
+            "sektor_ort": ort_fmt,
+            "kayip_puan": f"{kayip:.0f}/{r.max_puan:.0f}",
+        })
 
     # ── Hesaplanmış likidite değerleri ──
     likit_varliklar  = bs.donen_varliklar - bs.stoklar
@@ -659,10 +672,10 @@ YAZIM KURALLARI:
     client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
     try:
         message = _claude_call(client, "claude-sonnet-4-6", 12000, [{"role": "user", "content": prompt}])
-        return _temizle(message.content[0].text.strip())
+        return _temizle(message.content[0].text.strip()), oncelik_tablosu
     except Exception as e:
         print(f'[potansiyel_raporu ERROR] {e}')
-    return ""
+    return "", oncelik_tablosu
 
 def _nakit_akis_analiz(bs, skor_sonuc: "SkorSonuc") -> NakitAkisAnaliz:
     """
@@ -1729,7 +1742,7 @@ def rapor_olustur(
         f_potansiyel = ex.submit(_potansiyel_raporu, skor_sonuc, bs, sektor)
         f_finansal   = ex.submit(_finansal_tablo_yorumu, bs, sektor)
         yonetici_ozeti_sonuc      = f_yonetici.result()
-        skor_iyilestirme          = f_potansiyel.result()
+        skor_iyilestirme, oncelik_tablosu = f_potansiyel.result()
         finansal_tablo_yorumu_sonuc = f_finansal.result()
 
     return TamRapor(
@@ -1750,5 +1763,6 @@ def rapor_olustur(
         skor_iyilestirme=skor_iyilestirme,
         alt_hesap_analizi=alt_hesap,
         finansal_tablo_yorumu=finansal_tablo_yorumu_sonuc,
+        oncelik_tablosu=oncelik_tablosu,
         disclaimer=DISCLAIMER,
     )
