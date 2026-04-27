@@ -176,8 +176,8 @@ class TamRapor:
     skor_iyilestirme: str
     alt_hesap_analizi: list   # list[dict] — her dict: ana_hesap_kodu, ana_hesap_adi, analiz_metni, uyari_notu
     finansal_tablo_yorumu: str
-    oncelik_tablosu: list = field(default_factory=list)
     disclaimer: str
+    oncelik_tablosu: list = field(default_factory=list)
 
 
 # ─────────────────────────────────────────────
@@ -1696,7 +1696,112 @@ Yanıtı sadece üç numaralı paragraf halinde yaz. Başlık ekleme."""
         return ""
 
 
-# 11. ANA FONKSİYON
+# ─────────────────────────────────────────────
+# 11. DİNAMİK RASYO ANALİZİ
+# ─────────────────────────────────────────────
+
+def _zenginlestir_analizler(
+    analizler: list,
+    skor_sonuc,
+    sektor: str,
+) -> list:
+    """
+    Tüm rasyolar için ne_anlama_gelir ve nasil_iyilestirilir alanlarını
+    tek Sonnet çağrısıyla dinamik olarak doldurur.
+    """
+    import anthropic, os, json as _json
+    from scorer import RASYO_TANIMLARI, _sektor_to_bolum
+
+    if not analizler:
+        return analizler
+
+    bant_by_ad = {r.ad: r.bant for r in skor_sonuc.rasyolar}
+
+    bolum_esik  = _sektor_to_bolum(sektor)
+    rasyo_meta  = {t["id"]: t for t in RASYO_TANIMLARI}
+
+    _YUZDE_IDS = {"brut_kar_marji", "favok_marji", "faaliyet_gider_orani",
+                  "net_kar_marji", "roe", "roa", "finansman_gider_orani",
+                  "kv_borc_orani", "ortaklar_cari_orani"}
+    _GUN_IDS   = {"alacak_tahsil_suresi", "nakit_donusum_suresi"}
+
+    def _fv(rid: str, val: float) -> str:
+        if rid in _YUZDE_IDS: return f"%{val * 100:.1f}"
+        if rid in _GUN_IDS:   return f"{val:.0f} gün"
+        return f"{val:.2f}x"
+
+    satirlar = []
+    for a in analizler:
+        bant  = bant_by_ad.get(a.ad, "orta")
+        hedef = ""
+        t = rasyo_meta.get(a.rasyo_id)
+        if t:
+            esikler_tuple = t["esikler"].get(bolum_esik) or t["esikler"].get("ticaret")
+            if esikler_tuple:
+                m, i, z = esikler_tuple
+                sonraki = z if bant == "kotu" else i
+                hedef   = f", hedef: {_fv(a.rasyo_id, sonraki)}"
+        satirlar.append(
+            f"- {a.rasyo_id} | {a.ad} | mevcut: {a.deger_fmt}"
+            f" | bant: {bant} | sektör ort: {a.sektor_ort_fmt}{hedef}"
+        )
+
+    prompt = f"""Türk bankacı ve finansal analistsin. Aşağıdaki {len(analizler)} rasyo için firmaya özgü Türkçe açıklama ve iyileştirme önerileri üret.
+
+Firma sektörü: {_sektor_label(sektor)}
+
+RASYOLAR:
+{chr(10).join(satirlar)}
+
+KURALLAR:
+- aciklama: 2 cümle. İlk cümle mevcut değeri somut TL/oran bağlamıyla açıkla, ikinci cümle bu değerin banka veya işletme gözünden ne anlama geldiğini söyle.
+- iyilestir: tam 3 madde. Sektöre ve firmaya uygun, somut, uygulanabilir adımlar. Stok bakiyesi yoksa stok önerme. Finansman gideri yoksa faiz önerme.
+- bant "mukemmel" veya "iyi" olan rasyolarda iyilestir listesi boş bırak: [].
+- Markdown karakteri kullanma (**, *, -).
+- Sadece JSON döndür, başka metin yazma.
+
+FORMAT (bu yapıyı AYNEN kullan, tüm {len(analizler)} rasyo_id için):
+{{
+  "cari_oran": {{"aciklama": "...", "iyilestir": ["...", "...", "..."]}},
+  "asit_test": {{"aciklama": "...", "iyilestir": [...]}},
+  "nakit_oran": {{"aciklama": "...", "iyilestir": [...]}},
+  "borc_ozkaynak": {{"aciklama": "...", "iyilestir": [...]}},
+  "finansal_kaldırac": {{"aciklama": "...", "iyilestir": [...]}},
+  "kv_borc_orani": {{"aciklama": "...", "iyilestir": [...]}},
+  "ortaklar_cari_orani": {{"aciklama": "...", "iyilestir": [...]}},
+  "brut_kar_marji": {{"aciklama": "...", "iyilestir": [...]}},
+  "favok_marji": {{"aciklama": "...", "iyilestir": [...]}},
+  "faaliyet_gider_orani": {{"aciklama": "...", "iyilestir": [...]}},
+  "net_kar_marji": {{"aciklama": "...", "iyilestir": [...]}},
+  "roe": {{"aciklama": "...", "iyilestir": [...]}},
+  "roa": {{"aciklama": "...", "iyilestir": [...]}},
+  "stok_devir": {{"aciklama": "...", "iyilestir": [...]}},
+  "alacak_tahsil_suresi": {{"aciklama": "...", "iyilestir": [...]}},
+  "nakit_donusum_suresi": {{"aciklama": "...", "iyilestir": [...]}},
+  "faiz_karsilama": {{"aciklama": "...", "iyilestir": [...]}},
+  "net_borc_favok": {{"aciklama": "...", "iyilestir": [...]}},
+  "finansman_gider_orani": {{"aciklama": "...", "iyilestir": [...]}}
+}}"""
+
+    client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
+    try:
+        message = _claude_call(client, "claude-sonnet-4-6", 6000, [{"role": "user", "content": prompt}])
+        raw = message.content[0].text.strip()
+        import re as _re2
+        m = _re2.search(r'\{.*\}', raw, _re2.DOTALL)
+        data = _json.loads(m.group() if m else raw)
+        for a in analizler:
+            entry = data.get(a.rasyo_id)
+            if entry:
+                a.ne_anlama_gelir    = _temizle(entry.get("aciklama", ""))
+                a.nasil_iyilestirilir = [_temizle(s) for s in entry.get("iyilestir", []) if s]
+    except Exception as e:
+        logger.warning(f"[_zenginlestir_analizler ERROR] {e}")
+    return analizler
+
+
+# ─────────────────────────────────────────────
+# 12. ANA FONKSİYON
 # ─────────────────────────────────────────────
 
 def rapor_olustur(
@@ -1737,13 +1842,15 @@ def rapor_olustur(
 
     from concurrent.futures import ThreadPoolExecutor
 
-    with ThreadPoolExecutor(max_workers=3) as ex:
+    with ThreadPoolExecutor(max_workers=4) as ex:
         f_yonetici   = ex.submit(_yonetici_ozeti, skor_sonuc, bs, sektor)
         f_potansiyel = ex.submit(_potansiyel_raporu, skor_sonuc, bs, sektor)
         f_finansal   = ex.submit(_finansal_tablo_yorumu, bs, sektor)
-        yonetici_ozeti_sonuc      = f_yonetici.result()
+        f_analizler  = ex.submit(_zenginlestir_analizler, analizler, skor_sonuc, sektor)
+        yonetici_ozeti_sonuc        = f_yonetici.result()
         skor_iyilestirme, oncelik_tablosu = f_potansiyel.result()
         finansal_tablo_yorumu_sonuc = f_finansal.result()
+        analizler                   = f_analizler.result()
 
     return TamRapor(
         firma_adi=firma_adi,
