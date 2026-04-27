@@ -86,6 +86,7 @@ class BalanceSheet:
     match_rate: float = 0.0              # Eşleşme oranı (0–1)
     warnings: list = field(default_factory=list)
     alt_hesaplar: dict = field(default_factory=dict)  # {parent_kod: [(raw_kod, ad, bakiye), ...]}
+    _kullan_590: bool = False            # Çakışma: 590 net_kar olarak kullanılsın
 
     # ─── Türetilmiş toplamlar ───────────────────
 
@@ -155,7 +156,10 @@ class BalanceSheet:
                       + self.finansman_gelirleri
                       - self.finansman_giderleri
                       - self.vergi_gideri)
-        # Gelir tablosu yoksa (net_satislar=0) 590 hesabını kullan
+        # Yıl sonu + gelir tablosu çakışması: 590 kazanır
+        if self._kullan_590 and self.donem_net_kari != 0:
+            return self.donem_net_kari
+        # Gelir tablosu yoksa (yıl sonu kapatılmış, net_satislar=0): 590 kullan
         if self.net_satislar == 0 and self.donem_net_kari != 0:
             return self.donem_net_kari
         return hesaplanan
@@ -899,11 +903,9 @@ def _normalize_bilanco(bs: BalanceSheet) -> BalanceSheet:
     var_600 = bs.net_satislar != 0
 
     if var_590 and var_600:
-        # Çakışma: ikisi birden var
-        # 590 hesabı bilanço dengesini sağlıyor, güvenilir
-        # Gelir tablosundan net kâr türetmeyi dondur —
-        # net_kar property'si zaten 590'ı önceliklendiriyor
+        # Çakışma: ikisi birden var — 590 net_kar için kullanılsın
         logger.info("Mizan tipi: Yıl sonu + gelir tablosu çakışması — 590 baz alınıyor.")
+        bs._kullan_590 = True
         bs.warnings = getattr(bs, 'warnings', [])
         bs.warnings.append(
             "Mizanda hem 590 (dönem net kârı) hem gelir tablosu kalemleri mevcut. "
