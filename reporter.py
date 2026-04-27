@@ -1111,7 +1111,7 @@ def _zaman_cizelgesi(skor_sonuc: "SkorSonuc", senaryolar: list[SenaryoSonuc]) ->
         kisa.append("Alacak tahsilatını hızlandır, stok seviyesini düşür")
     if "nakit_oran" in kotu_zayif_ids:
         kisa.append("Nakit rezerv oluştur, vadesi gelen alacakları öncelikli tahsil et")
-    if "stok_devir" in kotu_zayif_ids:
+    if "stok_devir" in kotu_zayif_ids and bs.stoklar > 0:
         kisa.append("Yavaş dönen stokları indirimli sat, nakde çevir")
     if "alacak_tahsil_suresi" in kotu_zayif_ids:
         kisa.append("Alacak tahsilat sürecini sıkılaştır, vade politikasını güncelle")

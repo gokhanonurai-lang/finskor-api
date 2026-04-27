@@ -802,6 +802,25 @@ def skorla(bs, sektor: Sektor = "ticaret") -> SkorSonuc:
             kategori_puanlar[t["kategori"]] += puan
             continue
 
+        # Stok sıfırsa stok_devir hesaplanamaz — max puan ver, N/A göster
+        if rid == "stok_devir" and bs.stoklar == 0:
+            bant = "mukemmel"
+            puan = t["max_puan"] * BANT_CARPAN[bant]
+            rasyo_sonuclari.append(RasyoSonuc(
+                ad=t["ad"],
+                formul=t["formul"],
+                deger=0.0,
+                deger_fmt="N/A",
+                bant=bant,
+                puan=round(puan, 2),
+                max_puan=t["max_puan"],
+                aciklama="Stok bulunmuyor — oran hesaplanamaz, değerlendirme dışı tutuldu.",
+                kategori=t["kategori"],
+            ))
+            setattr(rasyo_sonuclari[-1], "id", rid)
+            kategori_puanlar[t["kategori"]] += puan
+            continue
+
         bant = _bant_bul(deger, esikler, t["yon"])
         puan = t["max_puan"] * BANT_CARPAN[bant]
 
