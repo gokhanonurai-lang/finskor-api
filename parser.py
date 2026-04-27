@@ -826,7 +826,11 @@ diger_kv_borclar, banka_kredileri_uv, diger_uv_borclar,
 odenmis_sermaye, sermaye_yedekleri, kar_yedekleri, gecmis_yil_karlari, donem_net_kari,
 net_satislar, satislarin_maliyeti, pazarlama_giderleri, genel_yonetim_giderleri,
 arge_giderleri, diger_faaliyet_gelirleri, diger_faaliyet_giderleri,
-finansman_gelirleri, finansman_giderleri, vergi_gideri"""
+finansman_gelirleri, finansman_giderleri, vergi_gideri
+
+Özel sınıflandırma kuralları:
+- 170-179 (Yıllara Yaygın İnşaat ve Onarım Maliyetleri) → diger_donen_varliklar
+- 350-359 (Yıllara Yaygın İnşaat Hakediş Bedelleri) → diger_kv_borclar"""
 
     client = anthropic.Anthropic()
     response = client.messages.create(
