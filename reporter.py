@@ -21,6 +21,22 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+import re as _re
+
+def _temizle(text: str) -> str:
+    """Sonnet çıktısındaki markdown karakterlerini temizler."""
+    if not text:
+        return text
+    # ** bold ve * italic kaldır
+    text = _re.sub(r'\*+', '', text)
+    # Satır başı markdown liste tiresi: "- madde" → "madde"
+    text = _re.sub(r'(?m)^\s*-\s+', '', text)
+    # JSON format sarmalayıcı < > kaldır (alt hesap analizi)
+    text = text.strip()
+    if text.startswith('<') and text.endswith('>'):
+        text = text[1:-1].strip()
+    return text
+
 
 # ─────────────────────────────────────────────
 # SEKTÖR ETİKETİ HELPER
@@ -262,7 +278,7 @@ Aşağıdaki 5 bölümü sırayla yaz, her biri bir paragraf olsun:
     try:
         client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
         message = _claude_call(client, "claude-sonnet-4-6", 6000, [{"role": "user", "content": prompt}])
-        return message.content[0].text.strip()
+        return _temizle(message.content[0].text.strip())
     except Exception as e:
         harf = skor_sonuc.harf
         skor = skor_sonuc.skor
@@ -643,7 +659,7 @@ YAZIM KURALLARI:
     client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
     try:
         message = _claude_call(client, "claude-sonnet-4-6", 12000, [{"role": "user", "content": prompt}])
-        return message.content[0].text.strip()
+        return _temizle(message.content[0].text.strip())
     except Exception as e:
         print(f'[potansiyel_raporu ERROR] {e}')
     return ""
@@ -1482,7 +1498,7 @@ Tam olarak şu 3 başlık:
 **Öneri:** Finansal profili güçlendirebilecek potansiyel aksiyonlar. 1-2 cümle.
 
 SADECE JSON döndür. Markdown veya açıklama ekleme. Format:
-{{"analiz": "<**Tespit:** ... **Risk/Fırsat:** ... **Öneri:** ...>"}}
+{{"analiz": "Tespit: ... Risk/Fırsat: ... Öneri: ..."}}
 
 Türkçe yaz."""
         try:
@@ -1495,7 +1511,7 @@ Türkçe yaz."""
             raw = response.content[0].text.strip()
             raw = raw.replace("```json", "").replace("```", "").strip()
             data = _json.loads(raw)
-            return parent, data.get("analiz", "Analiz üretilemedi.")
+            return parent, _temizle(data.get("analiz", "Analiz üretilemedi."))
         except Exception as e:
             logger.warning(f"Alt hesap Claude çağrısı başarısız ({parent}): {e}")
             return parent, "Analiz üretilemedi."
@@ -1661,7 +1677,7 @@ Yanıtı sadece üç numaralı paragraf halinde yaz. Başlık ekleme."""
             max_tokens=4000,
             messages=[{"role": "user", "content": prompt}],
         )
-        return msg.content[0].text.strip()
+        return _temizle(msg.content[0].text.strip())
     except Exception as e:
         logger.warning(f"_finansal_tablo_yorumu hatası: {e}")
         return ""
