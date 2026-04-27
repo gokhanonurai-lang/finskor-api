@@ -782,6 +782,26 @@ def skorla(bs, sektor: Sektor = "ticaret") -> SkorSonuc:
         deger = degerler.get(rid, 0.0)
         bolum   = _sektor_to_bolum(sektor)
         esikler = t["esikler"].get(bolum) or t["esikler"].get("ticaret")
+
+        # Finansman gideri sıfırsa faiz_karsilama hesaplanamaz — max puan ver, N/A göster
+        if rid == "faiz_karsilama" and bs.finansman_giderleri == 0:
+            bant = "mukemmel"
+            puan = t["max_puan"] * BANT_CARPAN[bant]
+            rasyo_sonuclari.append(RasyoSonuc(
+                ad=t["ad"],
+                formul=t["formul"],
+                deger=0.0,
+                deger_fmt="N/A",
+                bant=bant,
+                puan=round(puan, 2),
+                max_puan=t["max_puan"],
+                aciklama="Finansman gideri yok — oran hesaplanamaz, değerlendirme dışı tutuldu.",
+                kategori=t["kategori"],
+            ))
+            setattr(rasyo_sonuclari[-1], "id", rid)
+            kategori_puanlar[t["kategori"]] += puan
+            continue
+
         bant = _bant_bul(deger, esikler, t["yon"])
         puan = t["max_puan"] * BANT_CARPAN[bant]
 

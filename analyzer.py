@@ -384,6 +384,9 @@ def _analiz_nds(d: float) -> str:
             "Hem maliyetlidir hem de kırılganlık yaratır.")
 
 def _analiz_faiz_karsilama(d: float) -> str:
+    if d == 0.0:
+        return ("Finansman gideriniz bulunmuyor — faiz karşılama oranı hesaplanamaz. "
+                "Banka kredisi kullanmıyorsunuz; bu oran değerlendirme dışı tutulur.")
     if d >= 5.0:
         return (f"FAVÖK'ünüz faiz giderlerinizin {d:.1f} katı. "
                 "Faiz yükümlülüklerinizi rahatlıkla karşılayabiliyorsunuz. "
