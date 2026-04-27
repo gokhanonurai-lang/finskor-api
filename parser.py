@@ -64,6 +64,7 @@ class BalanceSheet:
     sermaye_yedekleri: float = 0.0       # 520–529
     kar_yedekleri: float = 0.0           # 540–549
     gecmis_yil_karlari: float = 0.0      # 570
+    gecmis_yil_zararlari: float = 0.0   # 580–589 (borç bakiyeli, özkaynaktan düşülür)
     donem_net_kari: float = 0.0          # 590
 
     # GELİR TABLOSU
@@ -123,7 +124,8 @@ class BalanceSheet:
     @property
     def ozkaynaklar(self) -> float:
         return (self.odenmis_sermaye + self.sermaye_yedekleri +
-                self.kar_yedekleri + self.gecmis_yil_karlari + self.donem_net_kari)
+                self.kar_yedekleri + self.gecmis_yil_karlari - self.gecmis_yil_zararlari +
+                self.donem_net_kari)
 
     @property
     def toplam_pasif(self) -> float:
@@ -219,6 +221,10 @@ ACCOUNT_MAP: list[tuple[list[str], str, int]] = [
     # DİĞER ALACAKLAR (KV) — Grup 13
     (["131", "132", "133", "135",
       "136", "137", "138", "139"], "diger_alacaklar_kv", 1),
+
+    # VERİLEN AVANSLAR (Grup 14) — aktif, borç-normal
+    (["140", "141", "142", "143", "144", "145",
+      "146", "147", "148", "149"], "diger_donen_varliklar", 1),
 
     # STOKLAR (Grup 15)
     (["150", "151", "152", "153", "154", "157", "159"], "stoklar", 1),
@@ -316,11 +322,19 @@ ACCOUNT_MAP: list[tuple[list[str], str, int]] = [
     (["500", "502", "504", "505", "510", "511", "512"], "odenmis_sermaye", -1),
     (["501", "503"], "odenmis_sermaye", -1),   # Ödenmemiş sermaye / olumsuz farklar
     (["525", "526", "527", "528", "529"], "sermaye_yedekleri", -1),
+    (["530", "531", "532", "533", "534", "535",
+      "536", "537", "538", "539"], "sermaye_yedekleri", -1),
+    (["550", "551", "552", "553", "554", "555",
+      "556", "557", "558", "559",
+      "560", "561", "562", "563", "564", "565",
+      "566", "567", "568", "569"], "sermaye_yedekleri", -1),
     (["506", "507", "508", "509"], "kar_yedekleri", -1),
     (["540", "541", "542", "543", "544", "545",
       "546", "547", "548", "549"], "kar_yedekleri", -1),
     (["570", "520"], "gecmis_yil_karlari", -1),
     (["521", "523"], "gecmis_yil_karlari", -1),   # Geçmiş yıl zararları — borç_bak × -1 = eksi
+    (["580", "581", "582", "583", "584", "585",
+      "586", "587", "588", "589"], "gecmis_yil_zararlari", 1),  # borç_bak × +1, ozkaynaktan düşülür
     (["590", "522"], "donem_net_kari", -1),
 
     # GELİR TABLOSU
