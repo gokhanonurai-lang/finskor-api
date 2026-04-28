@@ -179,6 +179,8 @@ class TamRapor:
     finansal_tablo_yorumu: str
     disclaimer: str
     oncelik_tablosu: list = field(default_factory=list)
+    oncelik_matrisi: list = field(default_factory=list)
+    skor_potansiyel_tablosu: list = field(default_factory=list)
 
 
 # ─────────────────────────────────────────────
@@ -574,6 +576,15 @@ def _potansiyel_raporu(skor_sonuc: "SkorSonuc", bs, sektor: str = "ticaret") -> 
         if rid in _GUN_IDS:   return f"{val:.0f} gün"
         return f"{val:.2f}"
 
+    _LIKIDITE_IDS  = {"cari_oran", "asit_test", "nakit_oran", "alacak_tahsil_suresi", "nakit_donusum_suresi"}
+    _KARLILIK_IDS  = {"brut_kar_marji", "favok_marji", "net_kar_marji", "roe", "roa", "faaliyet_gider_orani"}
+    _FAALIYET_IDS  = {"stok_devir", "alacak_devir"}
+    def _tahmini_sure(rid: str) -> str:
+        if rid in _LIKIDITE_IDS:  return "1–3 ay"
+        if rid in _FAALIYET_IDS:  return "1–3 ay"
+        if rid in _KARLILIK_IDS:  return "3–6 ay"
+        return "3–12 ay"
+
     rasyo_detay = ""
     oncelik_tablosu: list[dict] = []
     for r in kotu_zayif:
@@ -583,6 +594,7 @@ def _potansiyel_raporu(skor_sonuc: "SkorSonuc", bs, sektor: str = "ticaret") -> 
         esik_notu = ""
         ort_fmt  = "-"
         esik_fmt = "-"
+        rid      = ""
         if t:
             rid = t["id"]
             ort = sektor_ort_dict.get(rid)
@@ -603,11 +615,41 @@ def _potansiyel_raporu(skor_sonuc: "SkorSonuc", bs, sektor: str = "ticaret") -> 
         )
         oncelik_tablosu.append({
             "rasyo": r.ad,
+            "bant": r.bant,
             "mevcut": r.deger_fmt,
             "hedef": esik_fmt,
             "sektor_ort": ort_fmt,
             "kayip_puan": f"{kayip:.0f}/{r.max_puan:.0f}",
         })
+
+    # Önceliklendirme matrisi — kayıp puana göre sıralı, tahmini süre dahil
+    oncelik_matrisi: list[dict] = sorted(
+        [
+            {
+                "sira": 0,  # aşağıda doldurulacak
+                "rasyo": row["rasyo"],
+                "bant": row["bant"],
+                "mevcut": row["mevcut"],
+                "hedef": row["hedef"],
+                "sektor_ort": row["sektor_ort"],
+                "kayip_puan": row["kayip_puan"],
+                "tahmini_sure": _tahmini_sure(
+                    rasyo_meta_by_ad.get(row["rasyo"], {}).get("id", "")
+                ),
+            }
+            for row in oncelik_tablosu
+        ],
+        key=lambda x: -int(x["kayip_puan"].split("/")[0]),
+    )
+    for i, row in enumerate(oncelik_matrisi, 1):
+        row["sira"] = i
+
+    # Skor potansiyel tablosu
+    skor_potansiyel_tablosu: list[dict] = [
+        {"etiket": "Mevcut Skor",              "skor": mevcut_skor,                  "tip": "mevcut"},
+        {"etiket": "Bilanço Aksiyonlarıyla",   "skor": min(100, mevcut_skor + 9),    "tip": "senaryo"},
+        {"etiket": "Operasyonel Maksimum",     "skor": maksimum_skor,                "tip": "maksimum"},
+    ]
 
     # ── Hesaplanmış likidite değerleri ──
     likit_varliklar  = bs.donen_varliklar - bs.stoklar
@@ -668,15 +710,16 @@ YAZIM KURALLARI:
   * Kesin kredi kararı verir gibi yazma, "bu adımları uygularsanız skorunuz iyileşebilir" şeklinde yaz
   * "kredi kullanabilirsiniz" veya "kredi başvurusu değerlendirilebilir" yerine "finansal göstergeler olumlu profil oluştuğuna işaret etmektedir" kullan
   * "kredi verilmez" yerine "kredi onayı zorlaşabilir" yaz
-  * Her zaman tahmini/algoritmik analiz olduğunu hissettir"""
+  * Her zaman tahmini/algoritmik analiz olduğunu hissettir
+- Markdown tablo oluşturma (| karakteri kullanma). Özet veya önceliklendirme tablosu ekleme — bunlar ayrıca yapılandırılmış veri olarak iletilecek."""
 
     client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
     try:
         message = _claude_call(client, "claude-sonnet-4-6", 12000, [{"role": "user", "content": prompt}])
-        return _temizle(message.content[0].text.strip()), oncelik_tablosu
+        return _temizle(message.content[0].text.strip()), oncelik_tablosu, oncelik_matrisi, skor_potansiyel_tablosu
     except Exception as e:
         print(f'[potansiyel_raporu ERROR] {e}')
-    return "", oncelik_tablosu
+    return "", oncelik_tablosu, oncelik_matrisi, skor_potansiyel_tablosu
 
 def _nakit_akis_analiz(bs, skor_sonuc: "SkorSonuc") -> NakitAkisAnaliz:
     """
@@ -1874,7 +1917,7 @@ def rapor_olustur(
         f_sorular    = ex.submit(_sorulari_uret_safe)
         yonetici_ozeti_sonuc              = f_yonetici.result()
         logger.info(f"[TIMING] _yonetici_ozeti: {time.perf_counter()-_ts['yonetici']:.1f}s")
-        skor_iyilestirme, oncelik_tablosu = f_potansiyel.result()
+        skor_iyilestirme, oncelik_tablosu, oncelik_matrisi, skor_potansiyel_tablosu = f_potansiyel.result()
         logger.info(f"[TIMING] _potansiyel_raporu: {time.perf_counter()-_ts['potansiyel']:.1f}s")
         finansal_tablo_yorumu_sonuc       = f_finansal.result()
         logger.info(f"[TIMING] _finansal_tablo_yorumu: {time.perf_counter()-_ts['finansal']:.1f}s")
@@ -1904,5 +1947,7 @@ def rapor_olustur(
         alt_hesap_analizi=alt_hesap,
         finansal_tablo_yorumu=finansal_tablo_yorumu_sonuc,
         oncelik_tablosu=oncelik_tablosu,
+        oncelik_matrisi=oncelik_matrisi,
+        skor_potansiyel_tablosu=skor_potansiyel_tablosu,
         disclaimer=DISCLAIMER,
     )

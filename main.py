@@ -298,6 +298,8 @@ async def analyze(
             "alt_hesap_analizi": rapor.alt_hesap_analizi,
             "finansal_tablo_yorumu": rapor.finansal_tablo_yorumu,
             "oncelik_tablosu": rapor.oncelik_tablosu,
+            "oncelik_matrisi": rapor.oncelik_matrisi,
+            "skor_potansiyel_tablosu": rapor.skor_potansiyel_tablosu,
             "parse_method": bs.parse_method,
             "match_rate": round(bs.match_rate, 3),
             "warnings": bs.warnings,
