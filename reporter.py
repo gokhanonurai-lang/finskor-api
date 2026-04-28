@@ -1111,7 +1111,7 @@ def _banka_hazirlik(skor_sonuc: "SkorSonuc", bs) -> BankaHazirlik:
 # 7. ZAMAN ÇİZELGESİ
 # ─────────────────────────────────────────────
 
-def _zaman_cizelgesi(skor_sonuc: "SkorSonuc", senaryolar: list[SenaryoSonuc]) -> list[dict]:
+def _zaman_cizelgesi(bs, skor_sonuc: "SkorSonuc", senaryolar: list[SenaryoSonuc]) -> list[dict]:
     """
     Skor bandına ve mevcut zayıflıklara göre aksiyon zaman çizelgesi üretir.
     """
@@ -1872,7 +1872,7 @@ def rapor_olustur(
         aksiyon_plani=skor_sonuc.aksiyon_listesi,
         senaryolar=senaryolar,
         banka_hazirlik=_banka_hazirlik(skor_sonuc, bs),
-        zaman_cizelgesi=_zaman_cizelgesi(skor_sonuc, senaryolar),
+        zaman_cizelgesi=_zaman_cizelgesi(bs, skor_sonuc, senaryolar),
         skor_iyilestirme=skor_iyilestirme,
         alt_hesap_analizi=alt_hesap,
         finansal_tablo_yorumu=finansal_tablo_yorumu_sonuc,
