@@ -1847,28 +1847,31 @@ def rapor_olustur(
     logger.info(f"[TIMING] _alt_hesap_analizi: {time.perf_counter()-_t:.1f}s")
 
     from question_bank import sorulari_uret
-    _t = time.perf_counter()
-    try:
-        banka_sorulari = sorulari_uret(bs, skor_sonuc, sektor=sektor, alt_hesap_analizleri=alt_hesap, analizler=analizler)
-        logger.info(f"[TIMING] sorulari_uret ({len(banka_sorulari)} soru): {time.perf_counter()-_t:.1f}s")
-    except Exception as e:
-        logger.error(f"sorulari_uret() beklenmedik hata: {e}")
-        banka_sorulari = []
-
     from concurrent.futures import ThreadPoolExecutor
 
+    def _sorulari_uret_safe():
+        try:
+            sonuc = sorulari_uret(bs, skor_sonuc, sektor=sektor, alt_hesap_analizleri=alt_hesap, analizler=analizler)
+            logger.info(f"[TIMING] sorulari_uret ({len(sonuc)} soru): {time.perf_counter()-_t:.1f}s")
+            return sonuc
+        except Exception as e:
+            logger.error(f"sorulari_uret() beklenmedik hata: {e}")
+            return []
+
     _t = time.perf_counter()
-    with ThreadPoolExecutor(max_workers=4) as ex:
+    with ThreadPoolExecutor(max_workers=5) as ex:
         _ts = {
             "yonetici":   time.perf_counter(),
             "potansiyel": time.perf_counter(),
             "finansal":   time.perf_counter(),
             "analizler":  time.perf_counter(),
+            "sorular":    time.perf_counter(),
         }
         f_yonetici   = ex.submit(_yonetici_ozeti, skor_sonuc, bs, sektor)
         f_potansiyel = ex.submit(_potansiyel_raporu, skor_sonuc, bs, sektor)
         f_finansal   = ex.submit(_finansal_tablo_yorumu, bs, sektor)
         f_analizler  = ex.submit(_zenginlestir_analizler, analizler, skor_sonuc, sektor)
+        f_sorular    = ex.submit(_sorulari_uret_safe)
         yonetici_ozeti_sonuc              = f_yonetici.result()
         logger.info(f"[TIMING] _yonetici_ozeti: {time.perf_counter()-_ts['yonetici']:.1f}s")
         skor_iyilestirme, oncelik_tablosu = f_potansiyel.result()
@@ -1877,6 +1880,8 @@ def rapor_olustur(
         logger.info(f"[TIMING] _finansal_tablo_yorumu: {time.perf_counter()-_ts['finansal']:.1f}s")
         analizler                         = f_analizler.result()
         logger.info(f"[TIMING] _zenginlestir_analizler (toplam): {time.perf_counter()-_ts['analizler']:.1f}s")
+        banka_sorulari                    = f_sorular.result()
+        logger.info(f"[TIMING] sorulari_uret (toplam): {time.perf_counter()-_ts['sorular']:.1f}s")
     logger.info(f"[TIMING] paralel blok toplam: {time.perf_counter()-_t:.1f}s")
     logger.info(f"[TIMING] rapor_olustur TOPLAM: {time.perf_counter()-_t_rapor:.1f}s")
 
