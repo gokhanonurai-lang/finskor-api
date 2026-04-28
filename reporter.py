@@ -12,6 +12,7 @@ Tam rapor içeriğini üretir:
 
 from __future__ import annotations
 import logging
+import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -1780,7 +1781,9 @@ FORMAT (bu yapıyı AYNEN kullan):
         sats   = [satirlar[analizler.index(a)] for a in batch]
         prompt = _prompt_for_batch(sats, ids)
         client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
+        t0     = time.perf_counter()
         msg    = _claude_call(client, "claude-sonnet-4-6", 6000, [{"role": "user", "content": prompt}])
+        logger.info(f"[TIMING] _zenginlestir batch ({len(batch)} rasyo): {time.perf_counter()-t0:.1f}s")
         return _parse_batch(msg.content[0].text.strip())
 
     # 19 rasyoyu iki gruba böl: ilk 10, son 9
@@ -1830,33 +1833,52 @@ def rapor_olustur(
     Returns:
         TamRapor objesi
     """
-    # Senaryolar
-    senaryolar = _senaryolari_hesapla(bs, skor_sonuc, sektor)
+    _t_rapor = time.perf_counter()
 
+    # Senaryolar
+    _t = time.perf_counter()
+    senaryolar = _senaryolari_hesapla(bs, skor_sonuc, sektor)
     # Negatif delta olanları çıkar; sıfır delta olanlar (yapısal iyileştirme) dahil edilir
     senaryolar = [s for s in senaryolar if s.skor_delta >= 0]
+    logger.info(f"[TIMING] _senaryolari_hesapla: {time.perf_counter()-_t:.1f}s")
 
+    _t = time.perf_counter()
     alt_hesap = _alt_hesap_analizi(bs)
+    logger.info(f"[TIMING] _alt_hesap_analizi: {time.perf_counter()-_t:.1f}s")
 
     from question_bank import sorulari_uret
+    _t = time.perf_counter()
     try:
         banka_sorulari = sorulari_uret(bs, skor_sonuc, sektor=sektor, alt_hesap_analizleri=alt_hesap, analizler=analizler)
-        logger.info(f"Banka soruları: {len(banka_sorulari)} soru üretildi")
+        logger.info(f"[TIMING] sorulari_uret ({len(banka_sorulari)} soru): {time.perf_counter()-_t:.1f}s")
     except Exception as e:
         logger.error(f"sorulari_uret() beklenmedik hata: {e}")
         banka_sorulari = []
 
     from concurrent.futures import ThreadPoolExecutor
 
+    _t = time.perf_counter()
     with ThreadPoolExecutor(max_workers=4) as ex:
+        _ts = {
+            "yonetici":   time.perf_counter(),
+            "potansiyel": time.perf_counter(),
+            "finansal":   time.perf_counter(),
+            "analizler":  time.perf_counter(),
+        }
         f_yonetici   = ex.submit(_yonetici_ozeti, skor_sonuc, bs, sektor)
         f_potansiyel = ex.submit(_potansiyel_raporu, skor_sonuc, bs, sektor)
         f_finansal   = ex.submit(_finansal_tablo_yorumu, bs, sektor)
         f_analizler  = ex.submit(_zenginlestir_analizler, analizler, skor_sonuc, sektor)
-        yonetici_ozeti_sonuc        = f_yonetici.result()
+        yonetici_ozeti_sonuc              = f_yonetici.result()
+        logger.info(f"[TIMING] _yonetici_ozeti: {time.perf_counter()-_ts['yonetici']:.1f}s")
         skor_iyilestirme, oncelik_tablosu = f_potansiyel.result()
-        finansal_tablo_yorumu_sonuc = f_finansal.result()
-        analizler                   = f_analizler.result()
+        logger.info(f"[TIMING] _potansiyel_raporu: {time.perf_counter()-_ts['potansiyel']:.1f}s")
+        finansal_tablo_yorumu_sonuc       = f_finansal.result()
+        logger.info(f"[TIMING] _finansal_tablo_yorumu: {time.perf_counter()-_ts['finansal']:.1f}s")
+        analizler                         = f_analizler.result()
+        logger.info(f"[TIMING] _zenginlestir_analizler (toplam): {time.perf_counter()-_ts['analizler']:.1f}s")
+    logger.info(f"[TIMING] paralel blok toplam: {time.perf_counter()-_t:.1f}s")
+    logger.info(f"[TIMING] rapor_olustur TOPLAM: {time.perf_counter()-_t_rapor:.1f}s")
 
     return TamRapor(
         firma_adi=firma_adi,
