@@ -844,14 +844,17 @@ diger_donen_varliklar, ticari_alacaklar_uv, diger_alacaklar_uv, mali_duran_varli
 maddi_duran_varliklar, maddi_olmayan_duv, diger_duran_varliklar,
 banka_kredileri_kv, uzun_vadeli_borclar_kv, ticari_borclar_kv, ortaklara_borclar,
 diger_kv_borclar, banka_kredileri_uv, diger_uv_borclar,
-odenmis_sermaye, sermaye_yedekleri, kar_yedekleri, gecmis_yil_karlari, donem_net_kari,
+odenmis_sermaye, sermaye_yedekleri, kar_yedekleri, gecmis_yil_karlari,
+gecmis_yil_zararlari, donem_net_kari,
 net_satislar, satislarin_maliyeti, pazarlama_giderleri, genel_yonetim_giderleri,
 arge_giderleri, diger_faaliyet_gelirleri, diger_faaliyet_giderleri,
 finansman_gelirleri, finansman_giderleri, vergi_gideri
 
 Özel sınıflandırma kuralları:
 - 170-179 (Yıllara Yaygın İnşaat ve Onarım Maliyetleri) → diger_donen_varliklar
-- 350-359 (Yıllara Yaygın İnşaat Hakediş Bedelleri) → diger_kv_borclar"""
+- 350-359 (Yıllara Yaygın İnşaat Hakediş Bedelleri) → diger_kv_borclar
+- 580-589 (Geçmiş Yıl Zararları) → gecmis_yil_zararlari olarak pozitif değer yaz; donem_net_kari'ye YAZMA
+- donem_net_kari yalnızca 590 hesabından (Dönem Net Kârı/Zararı) gelir"""
 
     client = anthropic.Anthropic()
     response = client.messages.create(
