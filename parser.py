@@ -1128,6 +1128,7 @@ def parse_mizan(
 
     logger.info(f"Parse tamamlandı. Yöntem: {bs.parse_method}, "
                 f"Toplam Aktif: {bs.toplam_aktif:,.0f} ₺")
+    logger.info(f"BS_DEBUG: aktif={bs.toplam_aktif:.0f} pasif={bs.toplam_pasif:.0f} kasa={bs.kasa:.0f} banka={bs.banka:.0f} ta={bs.ticari_alacaklar:.0f} da={bs.diger_alacaklar_kv:.0f} st={bs.stoklar:.0f} dd={bs.diger_donen_varliklar:.0f} tuv={bs.ticari_alacaklar_uv:.0f} mdd={bs.maddi_duran_varliklar:.0f} mo={bs.maddi_olmayan_duv:.0f} dur={bs.diger_duran_varliklar:.0f} os={bs.odenmis_sermaye:.0f} ky={bs.kar_yedekleri:.0f} gk={bs.gecmis_yil_karlari:.0f} dn={bs.donem_net_kari:.0f}")
     return bs
 
 
