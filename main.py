@@ -178,7 +178,9 @@ async def analyze(
             "banka_kredileri_uv": round(bs.banka_kredileri_uv),
             "ozkaynaklar": round(bs.ozkaynaklar),
             "odenmis_sermaye": round(bs.odenmis_sermaye),
+            "kar_yedekleri": round(bs.kar_yedekleri),
             "gecmis_yil_karlari": round(bs.gecmis_yil_karlari),
+            "gecmis_yil_zararlari": round(bs.gecmis_yil_zararlari),
         }
 
         # Rasyolar
