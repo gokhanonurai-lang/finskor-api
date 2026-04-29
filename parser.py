@@ -364,6 +364,16 @@ ACCOUNT_MAP: list[tuple[list[str], str, int]] = [
     (["670", "671", "672", "673", "674",
       "675", "676", "677", "678", "679"], "finansman_gelirleri", -1),      # alacak-normal
     (["691"], "vergi_gideri", 1),
+    # ÜRETİM/HİZMET MALİYET HESAPLARI (inşaat/üretim şirketleri ara dönem kapatmaz)
+    # 74x = Hizmet/İnşaat Üretim Maliyeti → satış maliyetine eşdeğer
+    (["740", "741", "742", "743", "744", "745",
+      "746", "747", "748", "749"], "satislarin_maliyeti", 1),
+    # 76x = Pazarlama Giderleri (maliyet merkezi)
+    (["760", "761", "762", "763", "764", "765",
+      "766", "767", "768", "769"], "pazarlama_giderleri", 1),
+    # 77x = Genel Yönetim Giderleri (maliyet merkezi)
+    (["770", "771", "772", "773", "774", "775",
+      "776", "777", "778", "779"], "genel_yonetim_giderleri", 1),
 ]
 
 # Hızlı lookup: hesap_kodu → (field_adı, işaret) listesi
@@ -852,9 +862,13 @@ finansman_gelirleri, finansman_giderleri, vergi_gideri
 
 Özel sınıflandırma kuralları:
 - 170-179 (Yıllara Yaygın İnşaat ve Onarım Maliyetleri) → diger_donen_varliklar
+- 190-199 (Diğer Dönen Varlıklar: iş avansları, hakediş vb.) → diger_donen_varliklar; diger_duran_varliklar'a YAZMA
 - 350-359 (Yıllara Yaygın İnşaat Hakediş Bedelleri) → diger_kv_borclar
 - 580-589 (Geçmiş Yıl Zararları) → gecmis_yil_zararlari olarak pozitif değer yaz; donem_net_kari'ye YAZMA
-- donem_net_kari yalnızca 590 hesabından (Dönem Net Kârı/Zararı) gelir"""
+- donem_net_kari yalnızca 590 hesabından (Dönem Net Kârı/Zararı) gelir
+- 740-749 (Hizmet/İnşaat Üretim Maliyeti) → satislarin_maliyeti
+- 760-769 (Pazarlama Giderleri maliyet merkezi) → pazarlama_giderleri
+- 770-779 (Genel Yönetim Giderleri maliyet merkezi) → genel_yonetim_giderleri"""
 
     client = anthropic.Anthropic()
     response = client.messages.create(
