@@ -1000,6 +1000,104 @@ def _senaryolari_hesapla(bs, skor_sonuc: "SkorSonuc", sektor: str) -> list[Senar
                     ["alacak_tahsil_suresi", "nakit_oran", "asit_test"],
                 ))
 
+    # 8. brut_kar_marji — satış maliyeti azaltımı
+    if "brut_kar_marji" in zayif and bs.net_satislar > 0 and bs.satislarin_maliyeti > 0:
+        esik = sonraki_esik("brut_kar_marji", degerler["brut_kar_marji"])
+        if esik is not None:
+            # brut_kar_new / net_satislar >= esik → satislarin_maliyeti_new = net_satislar*(1-esik)
+            maliyet_new = bs.net_satislar * (1 - esik)
+            delta = bs.satislarin_maliyeti - maliyet_new
+            delta = min(delta, bs.satislarin_maliyeti)
+            if delta > 0:
+                uretilen.append((
+                    f"Satış maliyetini {delta:,.0f} TL azalt — brüt kâr marjını iyileştir",
+                    {"satislarin_maliyeti": -delta},
+                    ["brut_kar_marji", "favok_marji", "faaliyet_gider_orani",
+                     "net_kar_marji", "roe", "roa", "faiz_karsilama", "net_borc_favok"],
+                ))
+
+    # 9. favok_marji — faaliyet gideri azaltımı (brut_kar_marji zaten hedeflenmiyorsa)
+    if "favok_marji" in zayif and "brut_kar_marji" not in zayif and bs.net_satislar > 0:
+        esik = sonraki_esik("favok_marji", degerler["favok_marji"])
+        toplam_faaliyet = bs.faaliyet_giderleri
+        if esik is not None and toplam_faaliyet > 0:
+            # favok_new = esik * net_satislar; favok_new - favok = gerekli artış = faaliyet azaltımı
+            favok_needed = esik * bs.net_satislar
+            delta = favok_needed - bs.favok
+            delta = min(delta, toplam_faaliyet)
+            if delta > 0:
+                # Faaliyet giderleri property olduğu için bileşenlerine orantılı dağıt
+                gy_pay = bs.genel_yonetim_giderleri / toplam_faaliyet
+                paz_pay = bs.pazarlama_giderleri / toplam_faaliyet
+                arge_pay = bs.arge_giderleri / toplam_faaliyet
+                uretilen.append((
+                    f"Faaliyet giderini {delta:,.0f} TL azalt — FAVÖK marjını iyileştir",
+                    {
+                        "genel_yonetim_giderleri": -delta * gy_pay,
+                        "pazarlama_giderleri": -delta * paz_pay,
+                        "arge_giderleri": -delta * arge_pay,
+                    },
+                    ["favok_marji", "faaliyet_gider_orani", "net_kar_marji",
+                     "roe", "roa", "faiz_karsilama", "net_borc_favok"],
+                ))
+
+    # 10. stok_devir — stok eritme (asit_test zaten hedeflenmiyorsa)
+    if ("stok_devir" in zayif and "asit_test" not in zayif
+            and bs.stoklar > 0 and bs.satislarin_maliyeti > 0):
+        esik = sonraki_esik("stok_devir", degerler["stok_devir"])
+        if esik is not None:
+            # stok_devir = satislarin_maliyeti / stoklar >= esik → stoklar_new = satislarin_maliyeti/esik
+            stoklar_new = bs.satislarin_maliyeti / esik
+            delta = bs.stoklar - stoklar_new
+            delta = min(delta, bs.stoklar * 0.7)  # gerçekçi üst sınır
+            if delta > 0:
+                uretilen.append((
+                    f"Stokları {delta:,.0f} TL azalt — stok devir hızını iyileştir",
+                    {"stoklar": -delta, "banka": delta},
+                    ["stok_devir", "asit_test", "nakit_oran", "cari_oran",
+                     "nakit_donusum_suresi"],
+                ))
+
+    # 11. faiz_karsilama — borç kapatarak faiz yükü düşürme
+    if ("faiz_karsilama" in zayif
+            and bs.finansman_giderleri > 0 and bs.toplam_borclar > 0 and bs.favok > 0):
+        esik = sonraki_esik("faiz_karsilama", degerler["faiz_karsilama"])
+        if esik is not None:
+            # faiz_karsilama = favok / finansman_giderleri >= esik → hedef_faiz = favok/esik
+            hedef_faiz = bs.favok / esik
+            faiz_delta = bs.finansman_giderleri - hedef_faiz
+            if faiz_delta > 0:
+                faiz_orani = bs.finansman_giderleri / bs.toplam_borclar
+                if faiz_orani > 0:
+                    borc_delta = faiz_delta / faiz_orani
+                    borc_delta = min(borc_delta, bs.banka_kredileri_kv)
+                    faiz_azaltim = borc_delta * faiz_orani
+                    if borc_delta > 0 and faiz_azaltim > 0:
+                        uretilen.append((
+                            f"{borc_delta:,.0f} TL banka borcunu kapat — faiz yükünü azalt",
+                            {"banka_kredileri_kv": -borc_delta,
+                             "finansman_giderleri": -faiz_azaltim},
+                            ["faiz_karsilama", "net_borc_favok", "finansman_gider_orani",
+                             "borc_ozkaynak", "kv_borc_orani"],
+                        ))
+
+    # 12. net_borc_favok — nakit ile kısa vadeli borç kapatma
+    if "net_borc_favok" in zayif and bs.favok > 0 and bs.banka > 0 and bs.banka_kredileri_kv > 0:
+        esik = sonraki_esik("net_borc_favok", degerler["net_borc_favok"])
+        if esik is not None:
+            # net_borc/favok <= esik → net_borc_new = esik*favok; delta = net_borc - net_borc_new
+            hedef_net_borc = esik * bs.favok
+            delta = bs.net_borc - hedef_net_borc
+            delta = min(delta, bs.banka)           # eldeki nakiti aşma
+            delta = min(delta, bs.banka_kredileri_kv)  # KV borcunu aşma
+            if delta > 0:
+                uretilen.append((
+                    f"Eldeki nakitten {delta:,.0f} TL ile borç kapat — net borç/FAVÖK iyileştir",
+                    {"banka_kredileri_kv": -delta, "banka": -delta},
+                    ["net_borc_favok", "borc_ozkaynak", "finansal_kaldırac",
+                     "faiz_karsilama", "kv_borc_orani"],
+                ))
+
     # ── Her senaryo için raw_delta hesapla, sadece > 0 olanları tut ────
     sonuclar: list[SenaryoSonuc] = []
     aktif_delta_dicts: list[dict] = []   # kombine senaryo için
