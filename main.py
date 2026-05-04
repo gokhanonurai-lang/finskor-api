@@ -9,6 +9,13 @@ import tempfile
 import logging
 from pathlib import Path
 
+import sentry_sdk
+sentry_sdk.init(
+    dsn="https://4fb191ea7abb94adae832b0c5b41e16b0o4511330804891648.ingest.de.sentry.io/4511330901885009",
+    traces_sample_rate=1.0,
+    environment="production"
+)
+
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
