@@ -40,6 +40,15 @@ async def kalite_kontrol(sonuc, bs) -> tuple[bool, str]:
     aktif_pasif_fark = abs(bs.toplam_aktif - bs.toplam_pasif)
     aktif_pasif_oran = (aktif_pasif_fark / bs.toplam_aktif * 100) if bs.toplam_aktif > 0 else 100
 
+    # Kapalı mizan (590=0, 6xx=0, kar 570'te): net_satislar=0 geçerlidir.
+    # Aktif-pasif dengesi sağlanmışsa AI kalite kontrol çağrısına gerek yok.
+    kapali_mizan = bs.net_satislar == 0 and bs.gecmis_yil_karlari > 0
+    if kapali_mizan and aktif_pasif_oran < 5 and bs.toplam_aktif > 100_000:
+        logger.info(
+            f"Kapalı mizan kalite kontrolü: aktif-pasif fark %{aktif_pasif_oran:.1f} — GEÇER."
+        )
+        return True, "OK"
+
     prompt = f"""Finansal rapor kalite kontrolü yap. Sadece GECER veya HATA: [açıklama] döndür.
 
 VERİLER:

@@ -343,7 +343,8 @@ ACCOUNT_MAP: list[tuple[list[str], str, int]] = [
     (["521", "523"], "gecmis_yil_karlari", -1),   # Geçmiş yıl zararları — borç_bak × -1 = eksi
     (["580", "581", "582", "583", "584", "585",
       "586", "587", "588", "589"], "gecmis_yil_zararlari", 1),  # borç_bak × +1, ozkaynaktan düşülür
-    (["590", "522"], "donem_net_kari", -1),
+    (["590"], "donem_net_kari", -1),
+    (["522"], "sermaye_yedekleri", -1),  # Sermaye Düzeltme Farkları — özkaynak rezervi, net kâr değil
 
     # GELİR TABLOSU
     (["600", "601", "602"], "net_satislar", -1),    # alacak-normal → sign=-1
@@ -956,7 +957,15 @@ def _normalize_bilanco(bs: BalanceSheet) -> BalanceSheet:
         bs.donem_net_kari = hesaplanan_net_kar
         logger.info(f"Ara dönem net kârı hesaplandı: {hesaplanan_net_kar:,.0f} ₺")
     else:
-        logger.warning("Mizan tipi tespit edilemedi — ne 590 ne de 600 mevcut.")
+        if bs.gecmis_yil_karlari > 0:
+            # Kapalı mizan: yıl sonu kapanış yapılmış, dönem kârı 570'e devredilmiş.
+            # donem_net_kari=0 doğru, aktif-pasif dengesi 570 üzerinden sağlanmış.
+            logger.info(
+                "Mizan tipi: Kapalı mizan — dönem kârı geçmiş yıl kârlarına "
+                f"devredilmiş ({bs.gecmis_yil_karlari:,.0f} ₺)."
+            )
+        else:
+            logger.warning("Mizan tipi tespit edilemedi — ne 590 ne de 600 mevcut.")
 
     # Son kontrol: aktif-pasif hâlâ tutmuyorsa logla, müdahale etme
     aktif = bs.toplam_aktif
@@ -1040,7 +1049,22 @@ def parse_mizan(
     bs, match_rate = _apply_rules(rows)
     logger.info(f"Fix kural eşleşmesi: %{match_rate*100:.1f}")
 
-    if use_ai_fallback:
+    # ── Kapalı mizan tespiti (590=0, 6xx=0, kar 570'e devredilmiş) ──────────
+    # Bu tip mizanlarda AI tetiklemek double-counting ve yanlış sınıflandırma
+    # yaratır. Erken tespit edip AI bloğunu tamamen atlıyoruz.
+    _kapali_mizan = (
+        bs.donem_net_kari == 0
+        and bs.net_satislar == 0
+        and bs.gecmis_yil_karlari > 0
+    )
+    if _kapali_mizan:
+        logger.info(
+            "Kapalı mizan tespit edildi (590=0, 6xx=0, 570>0) — "
+            "AI tamamlama atlandı, kural tabanlı parse kullanılıyor."
+        )
+        bs.parse_method = "hybrid" if match_rate >= 0.80 else "rule_based"
+
+    if use_ai_fallback and not _kapali_mizan:
         # Kural tabanlı parse dengesi ön kontrolü.
         # Açık dönem mizanda (590=0, 600>0) net kâr henüz özkaynağa eklenmemiştir;
         # tahmini pasifi kullanarak gerçek dengeyi hesapla.
