@@ -651,22 +651,13 @@ def _read_excel(filepath):
                     and root3 not in _SKIP_6XX
                     and borc_top > 0 and alacak_top > 0):
                 if root3 in _ALACAK_NORMAL_6XX:
-                    # Kapalı mizan tespiti: yıl sonu kapanış kaydı borc_top'u
-                    # alacak_top'a eşitler → net ≈ 0. Açık dönemde borc_top = 0.
-                    # Önceki davranış (alacak_top doğrudan) kapalı mizanda
-                    # yanlış net_satislar = alacak_top üretiyordu.
-                    net = alacak_top - borc_top
-                    borc = 0.0
-                    alacak = net if net > 0 else 0.0
+                    borc = 0.0; alacak = alacak_top
                 elif root3 in _NET_HAREKET_6XX:
                     net = borc_top - alacak_top
                     borc = net if net > 0 else 0.0
                     alacak = (-net) if net < 0 else 0.0
                 else:
-                    # Borç-normal gider hesapları (620, 630, 660...)
-                    net = borc_top - alacak_top
-                    borc = net if net > 0 else 0.0
-                    alacak = 0.0
+                    borc = borc_top; alacak = 0.0
             else:
                 borc = borc_top; alacak = alacak_top
 
@@ -913,7 +904,7 @@ finansman_gelirleri, finansman_giderleri, vergi_gideri
 # 6. DOĞRULAMA
 # ─────────────────────────────────────────────
 
-def _normalize_bilanco(bs: BalanceSheet) -> BalanceSheet:
+def _normalize_bilanco(bs: BalanceSheet, kapali_mizan: bool = False) -> BalanceSheet:
     """
     Mizan türünü tespit eder ve aktif-pasif dengesini sağlar.
 
@@ -953,18 +944,24 @@ def _normalize_bilanco(bs: BalanceSheet) -> BalanceSheet:
     elif var_590 and not var_600:
         logger.info("Mizan tipi: Yıl sonu kapatılmış — 590 mevcut, gelir tablosu kapalı.")
     elif not var_590 and var_600:
-        logger.info("Mizan tipi: Ara dönem açık — gelir tablosu kalemlerinden net kâr türetilecek.")
-        # Gelir tablosundan net kâr hesapla ve özkaynağa ekle
-        hesaplanan_net_kar = (
-            bs.net_satislar - bs.satislarin_maliyeti
-            - bs.faaliyet_giderleri
-            + bs.diger_faaliyet_gelirleri - bs.diger_faaliyet_giderleri
-            - bs.enflasyon_duzeltme_zarari   # 658 FAVÖK'e dahil değil
-            + bs.finansman_gelirleri - bs.finansman_giderleri
-            - bs.vergi_gideri
-        )
-        bs.donem_net_kari = hesaplanan_net_kar
-        logger.info(f"Ara dönem net kârı hesaplandı: {hesaplanan_net_kar:,.0f} ₺")
+        if kapali_mizan:
+            logger.info(
+                "Mizan tipi: Kapalı mizan — 6xx değerleri kapanış öncesi toplam olarak "
+                "gelir tablosu için korunuyor, donem_net_kari=0 geçerli."
+            )
+        else:
+            logger.info("Mizan tipi: Ara dönem açık — gelir tablosu kalemlerinden net kâr türetilecek.")
+            # Gelir tablosundan net kâr hesapla ve özkaynağa ekle
+            hesaplanan_net_kar = (
+                bs.net_satislar - bs.satislarin_maliyeti
+                - bs.faaliyet_giderleri
+                + bs.diger_faaliyet_gelirleri - bs.diger_faaliyet_giderleri
+                - bs.enflasyon_duzeltme_zarari   # 658 FAVÖK'e dahil değil
+                + bs.finansman_gelirleri - bs.finansman_giderleri
+                - bs.vergi_gideri
+            )
+            bs.donem_net_kari = hesaplanan_net_kar
+            logger.info(f"Ara dönem net kârı hesaplandı: {hesaplanan_net_kar:,.0f} ₺")
     else:
         if bs.gecmis_yil_karlari > 0:
             # Kapalı mizan: yıl sonu kapanış yapılmış, dönem kârı 570'e devredilmiş.
@@ -1068,7 +1065,6 @@ def parse_mizan(
     )
     _kapali_mizan = (
         bs.donem_net_kari == 0
-        and bs.net_satislar == 0
         and bs.gecmis_yil_karlari > 0
     )
     if _kapali_mizan:
@@ -1147,7 +1143,7 @@ def parse_mizan(
                 )
 
     # Aşama 2: Bilanço normalize et (denge düzeltme)
-    bs = _normalize_bilanco(bs)
+    bs = _normalize_bilanco(bs, kapali_mizan=_kapali_mizan)
 
     # Doğrulama
     validation_warnings = _validate(bs)
