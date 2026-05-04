@@ -557,6 +557,8 @@ def _read_excel(filepath):
     raw_rows = []
     _alt_raw: dict[str, list] = {}       # tüm 3 haneli analar — reporter filtreler
     _parent_bak: dict[str, float] = {}   # exact 3-digit satır bakiyesi (doğruluk için)
+    has_open_6xx = False    # herhangi bir 6xx hesabında aktif bakiye var → ara dönem
+    has_closed_6xx = False  # 6xx bakiye=0 ama toplam>0 → kapanış kaydı yapılmış
 
     for row in best_ws.iter_rows(min_row=2):
         raw_code = row[code_col - 1].value
@@ -639,20 +641,23 @@ def _read_excel(filepath):
             continue
 
         # Bakiye tespiti
+        _root3 = s.split(".")[0][:3]
+        _is_income = (_root3.startswith("6") and len(_root3) == 3 and _root3 not in _SKIP_6XX)
         if bak_b > 0 and bak_a == 0:
             borc = bak_b; alacak = 0.0
+            if _is_income: has_open_6xx = True
         elif bak_a > 0 and bak_b == 0:
             borc = 0.0; alacak = bak_a
+            if _is_income: has_open_6xx = True
         elif bak_b > 0 and bak_a > 0:
             borc = bak_b; alacak = bak_a
+            if _is_income: has_open_6xx = True
         else:
-            root3 = s.split(".")[0][:3]
-            if (root3.startswith("6") and len(root3) == 3
-                    and root3 not in _SKIP_6XX
-                    and borc_top > 0 and alacak_top > 0):
-                if root3 in _ALACAK_NORMAL_6XX:
+            if (_is_income and borc_top > 0 and alacak_top > 0):
+                has_closed_6xx = True
+                if _root3 in _ALACAK_NORMAL_6XX:
                     borc = 0.0; alacak = alacak_top
-                elif root3 in _NET_HAREKET_6XX:
+                elif _root3 in _NET_HAREKET_6XX:
                     net = borc_top - alacak_top
                     borc = net if net > 0 else 0.0
                     alacak = (-net) if net < 0 else 0.0
@@ -664,7 +669,7 @@ def _read_excel(filepath):
         raw_rows.append((s, borc, alacak))
 
     if not raw_rows:
-        return [], {}, {}
+        return [], {}, {}, False, False
 
     all_codes = set(r[0] for r in raw_rows)
     has_hierarchy = any("." in code for code in all_codes)
@@ -727,7 +732,7 @@ def _read_excel(filepath):
     # Alt hesap filtresi: en az 1 anlamlı alt kalem (reporter hibrit eşiği uygular)
     alt_hesap_filtered = {p: v for p, v in _alt_raw.items() if len(v) >= 1}
 
-    return result, alt_hesap_filtered, _parent_bak
+    return result, alt_hesap_filtered, _parent_bak, has_open_6xx, has_closed_6xx
 
 # ─────────────────────────────────────────────
 # 4. KURAL TABANLI EŞLEŞTİRME
@@ -1046,7 +1051,7 @@ def parse_mizan(
     logger.info(f"Parser başladı: {filepath}")
 
     # Excel oku (rows + alt_hesap verisi tek geçişte)
-    rows, _alt_hesap_raw, _parent_bak = _read_excel(filepath)
+    rows, _alt_hesap_raw, _parent_bak, has_open_6xx, has_closed_6xx = _read_excel(filepath)
     if not rows:
         raise ValueError("Excel dosyasında geçerli satır bulunamadı.")
     logger.info(f"{len(rows)} satır okundu.")
@@ -1055,23 +1060,36 @@ def parse_mizan(
     bs, match_rate = _apply_rules(rows)
     logger.info(f"Fix kural eşleşmesi: %{match_rate*100:.1f}")
 
-    # ── Kapalı mizan tespiti (590=0, 6xx=0, kar 570'e devredilmiş) ──────────
-    # Bu tip mizanlarda AI tetiklemek double-counting ve yanlış sınıflandırma
-    # yaratır. Erken tespit edip AI bloğunu tamamen atlıyoruz.
+    # ── Mizan tipi tespiti (kapalı yılsonu mu, ara dönem mi?) ───────────────
+    # Sinyaller öncelik sırasıyla — ilk eşleşen karar verir:
+    # Kural 1 [KESİN AÇIK]:  6xx hesabında aktif bakiye var
+    # Kural 2 [KESİN KAPALI]: 6xx hesapları aktif ama bakiye=0 (kapanış kaydı)
+    # Kural 3 [KAPALI]:       590 dolu (yılsonu kâr hesabı)
+    # Kural 4 [AÇIK]:         Sıfır aktivite, geçmiş kâr da yok
+    # Kural 5 [FALLBACK]:     Varsayılan → ara dönem (güvenli)
+    if has_open_6xx:
+        _kapali_mizan = False
+        _kanit = f"Kural-1: 6xx aktif bakiye var → ara dönem"
+    elif has_closed_6xx:
+        _kapali_mizan = True
+        _kanit = f"Kural-2: 6xx bakiye=0 ama toplam>0 (kapanış kaydı) → kapalı yılsonu"
+    elif bs.donem_net_kari != 0:
+        _kapali_mizan = True
+        _kanit = f"Kural-3: 590={bs.donem_net_kari:.0f} → kapalı yılsonu"
+    elif bs.net_satislar == 0 and bs.gecmis_yil_karlari == 0:
+        _kapali_mizan = False
+        _kanit = "Kural-4: Sıfır aktivite → ara dönem"
+    else:
+        _kapali_mizan = False
+        _kanit = "Kural-5: Fallback → ara dönem"
+
     logger.info(
-        f"[DEBUG_KAPALI] donem_net_kari={bs.donem_net_kari:.0f} "
-        f"net_satislar={bs.net_satislar:.0f} "
-        f"gecmis_yil_karlari={bs.gecmis_yil_karlari:.0f}"
-    )
-    _kapali_mizan = (
-        bs.donem_net_kari == 0
-        and bs.gecmis_yil_karlari > 0
+        f"[MİZAN TİPİ] {_kanit} | "
+        f"has_open_6xx={has_open_6xx} has_closed_6xx={has_closed_6xx} "
+        f"donem_net_kari={bs.donem_net_kari:.0f} gecmis_yil={bs.gecmis_yil_karlari:.0f}"
     )
     if _kapali_mizan:
-        logger.info(
-            "Kapalı mizan tespit edildi (590=0, 6xx=0, 570>0) — "
-            "AI tamamlama atlandı, kural tabanlı parse kullanılıyor."
-        )
+        logger.info("Kapalı yılsonu mizanı — AI atlandı, kural tabanlı parse kullanılıyor.")
         bs.parse_method = "hybrid" if match_rate >= 0.80 else "rule_based"
 
     if use_ai_fallback and not _kapali_mizan:
