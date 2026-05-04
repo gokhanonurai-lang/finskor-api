@@ -1052,6 +1052,11 @@ def parse_mizan(
     # ── Kapalı mizan tespiti (590=0, 6xx=0, kar 570'e devredilmiş) ──────────
     # Bu tip mizanlarda AI tetiklemek double-counting ve yanlış sınıflandırma
     # yaratır. Erken tespit edip AI bloğunu tamamen atlıyoruz.
+    logger.info(
+        f"[DEBUG_KAPALI] donem_net_kari={bs.donem_net_kari:.0f} "
+        f"net_satislar={bs.net_satislar:.0f} "
+        f"gecmis_yil_karlari={bs.gecmis_yil_karlari:.0f}"
+    )
     _kapali_mizan = (
         bs.donem_net_kari == 0
         and bs.net_satislar == 0
