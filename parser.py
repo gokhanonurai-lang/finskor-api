@@ -503,6 +503,52 @@ _SKIP_6XX = frozenset(["690", "692"])
 _NET_HAREKET_6XX = frozenset(["697"])
 
 
+# ── XLS (Excel 97-2003) uyumluluk adaptörü ────────────────────────────────────
+# xlrd API'si openpyxl'den farklı; bu ince katman _read_excel gövdesini değiştirmeden
+# her iki formatı aynı kod yoluyla işlememizi sağlar.
+
+class _XlsCell:
+    __slots__ = ("value", "column")
+    def __init__(self, value, column: int):
+        self.value = value if value != "" else None
+        self.column = column  # 1-tabanlı
+
+class _XlsRow:
+    def __init__(self, ws, row_idx: int, ncols: int):
+        self._ws = ws
+        self._row_idx = row_idx
+        self._ncols = ncols
+
+    def __getitem__(self, col_idx: int) -> _XlsCell:
+        val = self._ws.cell_value(self._row_idx, col_idx)
+        return _XlsCell(val, col_idx + 1)
+
+    def __iter__(self):
+        for c in range(self._ncols):
+            yield self[c]
+
+    def __len__(self) -> int:
+        return self._ncols
+
+    def __reversed__(self):
+        for c in range(self._ncols - 1, -1, -1):
+            yield self[c]
+
+class _XlsSheetAdapter:
+    def __init__(self, ws):
+        self._ws = ws
+        self.title: str = ws.name
+        self.max_row: int = ws.nrows
+        self.max_column: int = ws.ncols
+
+    def iter_rows(self, min_row: int = 1, max_row: int | None = None,
+                  max_col: int | None = None, **_):
+        end = min(max_row or self._ws.nrows, self._ws.nrows)
+        cols = min(max_col or self._ws.ncols, self._ws.ncols)
+        for i in range(min_row - 1, end):
+            yield _XlsRow(self._ws, i, cols)
+
+
 def _read_excel(filepath):
     """
     Excel mizan dosyasını okur.
@@ -513,30 +559,42 @@ def _read_excel(filepath):
         alt_hesap_raw: {parent: [{"kod", "ad", "borc_top", "alacak_top", "bakiye"}, ...]}
         parent_bak: {parent: signed_bakiye}  — doğruluk kontrolü için
     """
-    wb = openpyxl.load_workbook(filepath, data_only=False)
-    best_ws = max(wb.worksheets, key=lambda ws: ws.max_row)
+    _ext = Path(filepath).suffix.lower()
+    if _ext == '.xls':
+        import xlrd as _xlrd
+        _xls_wb = _xlrd.open_workbook(filepath)
+        best_ws = max(
+            (_XlsSheetAdapter(_xls_wb.sheet_by_index(i)) for i in range(_xls_wb.nsheets)),
+            key=lambda ws: ws.max_row,
+        )
+        logger.info("XLS format tespit edildi — xlrd adapter kullanılıyor.")
+    else:
+        _wb = openpyxl.load_workbook(filepath, data_only=False)
+        best_ws = max(_wb.worksheets, key=lambda ws: ws.max_row)
+
     code_col, borc_bak_col, alacak_bak_col, borc_top_col, alacak_top_col = _find_columns(best_ws)
     if not code_col or not borc_bak_col:
         raise ValueError("Hesap kodu veya bakiye kolonu tespit edilemedi.")
 
-    # Formül tespiti: bakiye + toplam sütunlarının hepsine bak
-    _kontrol_kolonlar = [c for c in [borc_bak_col, alacak_bak_col, borc_top_col, alacak_top_col] if c]
-    _has_formula = False
-    for _row in best_ws.iter_rows(min_row=2, max_row=30):
-        for _col in _kontrol_kolonlar:
-            _cell = _row[_col - 1]
-            if _cell.value is not None:
-                if isinstance(_cell.value, str) and _cell.value.startswith("="):
-                    _has_formula = True
-                    break
+    # Formül tespiti: sadece xlsx — xlrd her zaman hesaplanmış değer döndürür
+    if _ext != '.xls':
+        _kontrol_kolonlar = [c for c in [borc_bak_col, alacak_bak_col, borc_top_col, alacak_top_col] if c]
+        _has_formula = False
+        for _row in best_ws.iter_rows(min_row=2, max_row=30):
+            for _col in _kontrol_kolonlar:
+                _cell = _row[_col - 1]
+                if _cell.value is not None:
+                    if isinstance(_cell.value, str) and _cell.value.startswith("="):
+                        _has_formula = True
+                        break
+            if _has_formula:
+                break
         if _has_formula:
-            break
-    if _has_formula:
-        logger.info("Formül hücresi tespit edildi — data_only=True ile yeniden açılıyor.")
-        wb = openpyxl.load_workbook(filepath, data_only=True)
-        best_ws = max(wb.worksheets, key=lambda ws: ws.max_row)
-    else:
-        logger.info("Hücreler sayısal — data_only=False yeterli.")
+            logger.info("Formül hücresi tespit edildi — data_only=True ile yeniden açılıyor.")
+            _wb = openpyxl.load_workbook(filepath, data_only=True)
+            best_ws = max(_wb.worksheets, key=lambda ws: ws.max_row)
+        else:
+            logger.info("Hücreler sayısal — data_only=False yeterli.")
 
     logger.info(f"Bakiye sutunlari: borc_bak={borc_bak_col}, alacak_bak={alacak_bak_col}, "
                 f"borc_top={borc_top_col}, alacak_top={alacak_top_col}")
