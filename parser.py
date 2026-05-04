@@ -651,13 +651,22 @@ def _read_excel(filepath):
                     and root3 not in _SKIP_6XX
                     and borc_top > 0 and alacak_top > 0):
                 if root3 in _ALACAK_NORMAL_6XX:
-                    borc = 0.0; alacak = alacak_top
+                    # Kapalı mizan tespiti: yıl sonu kapanış kaydı borc_top'u
+                    # alacak_top'a eşitler → net ≈ 0. Açık dönemde borc_top = 0.
+                    # Önceki davranış (alacak_top doğrudan) kapalı mizanda
+                    # yanlış net_satislar = alacak_top üretiyordu.
+                    net = alacak_top - borc_top
+                    borc = 0.0
+                    alacak = net if net > 0 else 0.0
                 elif root3 in _NET_HAREKET_6XX:
                     net = borc_top - alacak_top
                     borc = net if net > 0 else 0.0
                     alacak = (-net) if net < 0 else 0.0
                 else:
-                    borc = borc_top; alacak = 0.0
+                    # Borç-normal gider hesapları (620, 630, 660...)
+                    net = borc_top - alacak_top
+                    borc = net if net > 0 else 0.0
+                    alacak = 0.0
             else:
                 borc = borc_top; alacak = alacak_top
 
