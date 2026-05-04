@@ -142,7 +142,8 @@ async def analyze(
         raise HTTPException(400, "Dosya boyutu 10MB'ı geçemez.")
     await file.seek(0)
 
-    with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as tmp:
+    _upload_ext = ".xls" if file.filename.lower().endswith(".xls") else ".xlsx"
+    with tempfile.NamedTemporaryFile(suffix=_upload_ext, delete=False) as tmp:
         content = await file.read()
         tmp.write(content)
         tmp_path = tmp.name
